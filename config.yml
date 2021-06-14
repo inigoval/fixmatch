@@ -1,0 +1,26 @@
+type: 'fixmatch'
+dataset: 'mirabest'
+
+data:
+    fraction: 1
+    split: 0.1
+    val_frac: 0.2
+    u_frac: 9
+
+model:
+    n_z: 32                        # latent vector length
+    n_gf: 16                       # generator feature map size
+    n_df: 16                       # discriminator feature map size
+
+train:
+    n_epochs: 1300
+    lr: 0.0001
+    batch_size: 50
+    fid: False
+    flip: 0
+
+cut_threshold: 22
+ent_weight: 0
+mu: 7
+lambda: 1
+tau: 0.95
