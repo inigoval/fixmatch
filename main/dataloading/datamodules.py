@@ -6,22 +6,37 @@ import pytorch_lightning as pl
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, random_split
 from pytorch_lightning.trainer.supporters import CombinedLoader
+import torch.utils.data as D
 
 from config import load_config
 from paths import Path_Handler
-from dataloading.datasets import MB_nohybrids, RGZ20k, MiraBest_full
+from dataloading.datasets import (
+    MB_nohybrids,
+    RGZ20k,
+    MiraBest_full,
+    MBFRUncertain,
+    MBFRConfident,
+)
 from dataloading.utils import Circle_Crop, label_fraction, flip_targets
-from dataloading.utils import size_cut, mb_cut, data_splitter, subset
+from dataloading.utils import (
+    size_cut,
+    mb_cut,
+    data_splitter,
+    subset,
+    data_splitter_strat,
+    unbalance,
+)
 from fixmatch import TransformFixMatch
+from utilities import compute_mu_sig
 
 paths = Path_Handler()
 path_dict = paths._dict()
 config = load_config()
 
-weak_T = T.Compose([T.RandomRotation(180), T.ToTensor(), Circle_Crop()])
-u_T = TransformFixMatch()
-# u_T = T.Compose([T.ToTensor(), Circle_Crop()])
-test_T = T.Compose([T.ToTensor(), Circle_Crop()])
+totens = T.ToTensor()
+weak_transform = lambda mu, sig : T.Compose([T.RandomHorizontalFlip(p=0.5), T.RandomRotation(180),T.ToTensor(), Circle_Crop(),T.Normalize((mu,), (sig,))])
+test_transform = lambda mu, sig : T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))])
+
 
 
 class mb_rgzDataModule(pl.LightningDataModule):
@@ -60,7 +75,7 @@ class mb_rgzDataModule(pl.LightningDataModule):
         self.size_cut(rgz)
         mb_cut(rgz)
         len_u = torch.clamp(
-            torch.tensor(self.config["data"]["u_frac"] * len(self.data["l"])),
+            torch.tensor(self.config["mu"] * len(self.data["l"])),
             0,
             len(self.data["u"]),
         ).item()
@@ -112,10 +127,14 @@ class mb_rgzDataModule(pl.LightningDataModule):
         dset.rgzid = dset.rgzid[idx, ...]
         dset.sizes = dset.sizes[idx, ...]
         dset.mbflg = dset.mbflg[idx, ...]
-        self.u_frac = idx.shape[0] / length
+        self.mu = idx.shape[0] / length
 
 
 class mbDataModule(pl.LightningDataModule):
+    """ 
+    Pytorch Lightning dataloader class for the MiraBest dataset.
+    
+    """
     def __init__(
         self,
         config,
@@ -123,9 +142,6 @@ class mbDataModule(pl.LightningDataModule):
     ):
         super().__init__()
         self.path = path
-        self.fraction = config["data"]["fraction"]
-        self.split = config["data"]["split"]
-        self.val_frac = config["data"]["val_frac"]
         self.batch_size = config["train"]["batch_size"]
         self.hparams = {}
         self.config = config
@@ -135,15 +151,137 @@ class mbDataModule(pl.LightningDataModule):
         MB_nohybrids(self.path, train=False, download=True)
 
     def setup(self, stage=None):
+
+        # Load dataset and calculate mean and std for renormalisation # 
+        mb = MB_nohybrids(self.path, train=True, transform=totens)
+        mu, sig = compute_mu_sig(mb)
+
+        # Define transforms # 
+        test_T = test_transform(mu, sig)
+        u_T = TransformFixMatch(mu, sig)
+        weak_T = weak_transform(mu, sig)
+        mb = MB_nohybrids(self.path, train=True, transform=weak_T)
+
+        self.data, self.data_idx = data_splitter_strat(
+            mb,
+            fraction=self.config['data']['fraction'],
+            split=self.config['data']['split'],
+            val_frac=self.config['data']['val_frac'],
+        )
+
+        ## Unbalance the unlabelled dataset and change mu accordingly ##
+        if self.config["data"]["fri_R"] >= 0:
+            self.data_idx["u"] = unbalance(
+                self.data_idx["u"], mb, self.config["data"]["fri_R"]
+            )
+            self.config["mu"] = len(self.data_idx["u"]) / len(self.data_idx["l"])
+            print(f"mu = {len(self.data_idx['u'])/len(self.data_idx['l'])}")
+
+        self.data["u"] = D.Subset(
+            MB_nohybrids(self.path, train=True, transform=u_T), self.data_idx["u"]
+        )
+        self.data["test"] = MB_nohybrids(self.path, train=False, transform=test_T)
+
+        # Flip a number of targets randomly
+        if config["train"]["flip"]:
+            self.data["l"] = flip_targets(self.data["l"], config["train"]["flip"])
+
+        # Compute & save data hyperparameters and #
+        self.save_hparams()
+
+    def train_dataloader(self):
+        loader_l = DataLoader(self.data["l"], self.batch_size, shuffle=True)
+
+        loader_u = DataLoader(
+            self.data["u"], int(self.batch_size * self.config["mu"]), shuffle=True
+        )
+
+        loaders = {"u": loader_u, "l": loader_l}
+
+        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
+        return combined_loaders
+
+    def val_dataloader(self):
+        loader_val = DataLoader(self.data["val"], int(len(self.data["val"])))
+        # loader_u = DataLoader(self.data["u"], int(len(self.data["u"])))
+        loaders = {"val": loader_val}
+        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
+        return combined_loaders
+
+    def test_dataloader(self):
+        loader_test = DataLoader(self.data["test"], int(len(self.data["test"])))
+        loader_u = DataLoader(self.data["u"], int(len(self.data["u"])))
+        loaders = {"unlabelled": loader_u, "test": loader_test}
+        return CombinedLoader(loaders, "max_size_cycle")
+        return loaders
+
+    def save_hparams(self):
+        self.hparams.update(
+            {
+                "n_labelled": len(self.data["l"]),
+                "n_unlabelled": len(self.data["u"]),
+                "n_test": len(self.data["test"]),
+                "f_u": label_fraction(self.data["u"], 0),
+                "f_l": label_fraction(self.data["l"], 0),
+            }
+        )
+
+
+class mbconfidentDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        config,
+        fraction=config["data"]["fraction"],
+        split=config["data"]["split"],
+        val_frac=config["data"]["val_frac"],
+        batch_size=config["train"]["batch_size"],
+        path=path_dict["data"],
+    ):
+        super().__init__()
+        self.fraction = fraction
+        self.split = split
+        self.val_frac = val_frac
+        self.batch_size = batch_size
+        self.path = path
+        self.hparams = {}
+        self.config = config
+
+    def prepare_data(self):
+        MBFRConfident(self.path, train=True, download=True)
+        MB_nohybrids(self.path, train=False, download=True)
+
+    def setup(self, stage=None):
+        mb = MBFRUncertain(self.path, train=True, transform=totens)
+        mu, sig = compute_mu_sig(mb)
+
+        test_T = T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))])
+        u_T = TransformFixMatch(mu, sig)
+        weak_T = T.Compose(
+            [
+                T.RandomRotation(180),
+                T.ToTensor(),
+                Circle_Crop(),
+                T.Normalize((mu,), (sig,)),
+            ]
+        )
+
+        mb = MBFRUncertain(self.path, train=True, transform=weak_T)
+
         self.data, self.data_idx = data_splitter(
-            MB_nohybrids(self.path, train=True, transform=weak_T),
+            mb,
             fraction=self.fraction,
             split=self.split,
             val_frac=self.val_frac,
         )
 
-        self.data["u"] = torch.utils.data.Subset(
-            MB_nohybrids(self.path, train=True, transform=u_T), self.data_idx["u"]
+        self.data["u"] = D.ConcatDataset(
+            [
+                D.Subset(
+                    MB_nohybrids(self.path, train=True, transform=u_T),
+                    self.data_idx["u"],
+                ),
+                MBFRConfident(self.path, train=True, transform=u_T),
+            ]
         )
 
         self.data["test"] = MB_nohybrids(self.path, train=False, transform=test_T)
@@ -154,10 +292,20 @@ class mbDataModule(pl.LightningDataModule):
 
         self.save_hparams()
 
+        self.data["test"] = MB_nohybrids(self.path, train=False, transform=test_T)
+
+        mb_u_certain = self.data["u"]
+
+        # Flip a number of targets randomly
+        if config["train"]["flip"]:
+            self.data["l"] = flip_targets(self.data["l"], config["train"]["flip"])
+
+        self.save_hparams()
+
     def train_dataloader(self):
         loader_l = DataLoader(self.data["l"], self.batch_size, shuffle=True)
         loader_u = DataLoader(
-            self.data["u"], self.batch_size * self.config["mu"], shuffle=True
+            self.data["u"], int(self.config["mu"] * self.batch_size), shuffle=True
         )
         loaders = {"u": loader_u, "l": loader_l}
         combined_loaders = CombinedLoader(loaders, "max_size_cycle")
@@ -171,8 +319,10 @@ class mbDataModule(pl.LightningDataModule):
         return combined_loaders
 
     def test_dataloader(self):
-        loader = DataLoader(self.data["test"], int(len(self.data["test"])))
-        return loader
+        loader_test = DataLoader(self.data["test"], int(len(self.data["test"])))
+        loader_u = DataLoader(self.data["u"], int(len(self.data["u"])))
+        loaders = {"unlabelled": loader_u, "test": loader_test}
+        return CombinedLoader(loaders, "max_size_cycle")
 
     def save_hparams(self):
         self.hparams.update(

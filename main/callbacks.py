@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 import numpy as np
 import torch
+import torchmetrics.functional as tmF
 
 from utilities import fig2img, entropy, dset2tens
 from config import load_config
@@ -41,7 +42,11 @@ class MetricLogger(pl.Callback):
 
         y_hat = pl_module.forward(x)
         p_pred, y_pred = torch.max(y_hat, 1)
-        idx_wrong = torch.nonzero(y_pred == y).view(-1)
+        idx_wrong = torch.nonzero(y_pred != y).view(-1)
+
+        H_wrong = np.mean(entropy(y_hat[idx_wrong, ...]))
+        pl_module.log("average misclassification entropy", H_wrong)
+        pl_module.log("test/average misclassification probability", torch.mean(p_pred))
 
         # Plot bar chart of incorrect indices #
         data = [[idx + 0.1] for idx in idx_wrong.tolist()]
@@ -53,7 +58,6 @@ class MetricLogger(pl.Callback):
                 )
             }
         )
-        pl_module.log("test/average misclassification probability", torch.mean(p_pred))
 
 
 class FeaturePlot(pl.Callback):
@@ -92,3 +96,51 @@ class FeaturePlot(pl.Callback):
             )
 
         trainer.logger.experiment.log(plot_dict)
+
+
+class ImpurityLogger(pl.Callback):
+    def __init__(self):
+        super().__init__()
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+
+        tau = pl_module.config["tau"]
+        x, y = dset2tens(pl_module.trainer.datamodule.data["u"])
+        x = x[0].type_as(pl_module.C.conv1[0].weight)
+        y = y.type_as(pl_module.C.conv1[0].weight)
+
+        y_hat = pl_module.forward(x)
+        p_pred, y_pred = torch.max(y_hat, 1)
+
+        mask_rate = self.calc_mask_rate(tau, p_pred)
+        pl_module.log("train/mask_rate", mask_rate)
+
+        impurities = self.calc_impurities(tau, p_pred, y_pred, y)
+        pl_module.log("train/impurities", impurities / (mask_rate + 0.0000001))
+
+    def on_test_epoch_end(self, trainer, pl_module):
+        tau = pl_module.config["tau"]
+        x, y = dset2tens(pl_module.trainer.datamodule.data["u"])
+        x = x[0].type_as(pl_module.C.conv1[0].weight)
+        y = y.type_as(pl_module.C.conv1[0].weight)
+
+        y_hat = pl_module.forward(x)
+        p_pred, y_pred = torch.max(y_hat, 1)
+
+        impurities = self.calc_impurities(tau, p_pred, y_pred, y)
+        pl_module.log("unlabelled/impurities", impurities)
+
+        mask_rate = self.calc_mask_rate(tau, p_pred)
+        pl_module.log("unlabelled/mask_rate", mask_rate)
+
+    @staticmethod
+    def calc_impurities(tau, p_pred, y_pred, y):
+        idx_wrong = torch.nonzero(y_pred != y).view(-1)
+        p_wrong = p_pred[idx_wrong, ...]
+        impurities = torch.count_nonzero(p_wrong > tau)
+        return impurities / len(y)
+
+    @staticmethod
+    def calc_mask_rate(tau, p_pred):
+        masks = torch.count_nonzero(p_pred > tau)
+        return masks / len(p_pred)

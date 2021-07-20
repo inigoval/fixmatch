@@ -88,6 +88,11 @@ def flip(labels, p_flip):
         return labels
 
 
+def compute_mu_sig(dset):
+    x, _ = dset2tens(dset)
+    return torch.mean(x), torch.std(x)
+
+
 #################
 ### Callbacks ###
 #################

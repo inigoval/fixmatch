@@ -10,7 +10,7 @@ import torchmetrics.functional as tmF
 from torch.utils.data import DataLoader
 from statistics import mean
 
-from networks.models import disc
+from networks.models import disc, Tang
 from utilities import logit_loss, entropy, dset2tens, flip
 from evaluation import accuracy, pred_label_fraction, calculate_fid
 from config import load_config
@@ -20,7 +20,7 @@ from paths import Path_Handler
 
 
 class TransformFixMatch(object):
-    def __init__(self):
+    def __init__(self, mu, sig):
         self.weak = T.Compose(
             [
                 T.RandomRotation(180),
@@ -38,23 +38,17 @@ class TransformFixMatch(object):
             ]
         )
 
-        self.normalize = T.Compose(
-            [
-                T.ToTensor(),
-            ]
-        )
-        # T.Normalize(mean=mean, std=std)])
+        self.normalize = T.Normalize((mu,), (sig,))
 
     def __call__(self, x):
         weak = self.weak(x)
         strong = self.strong(x)
-        return weak, strong
+        return self.normalize(weak), self.normalize(strong)
 
 
 class clf(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
-        self.C = disc()
         self.ce_loss = nn.CrossEntropyLoss(reduction="mean")
         self.best_acc = 0
         self.config = config
@@ -62,10 +56,15 @@ class clf(pl.LightningModule):
         paths.fill_dict()
         paths.dict["chk"] = (
             paths.dict["files"]
-            / f"type{config['type']}_split{config['data']['split']}_{config['dataset']}"
+            / f"{config['type']}_split{config['data']['split']}_{config['dataset']}_ufrac{config['mu']}"
         )
         paths.create_paths()
         self.paths = paths.dict
+
+        if config["model"]["architecture"] == "basic":
+            self.C = disc()
+        elif config["model"]["architecture"] == "tang":
+            self.C = Tang()
 
     def forward(self, x, logit=False):
         # D(img) returns (logits, y, features)
@@ -133,32 +132,31 @@ class clf(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         save_path = self.paths["chk"] / f"seed_{self.config['seed']}.pt"
         torch.save(self.C_weights, save_path)
-        x, y = batch
-        C = self.C.load_state_dict(self.C_weights)
-        logits, y_pred = self.C(x)
+        self.C.load_state_dict(self.C_weights)
 
-        loss = F.cross_entropy(logits, y)
-        self.log(f"test/loss", loss)
+        for key, data in batch.items():
+            x, y = data
+            if key == "unlabelled":
+                x = x[0]
+            logits, y_pred = self.C(x)
 
-        ## Accuracy ##
-        acc = tmF.accuracy(y_pred, y)
-        self.log(f"test/accuracy", acc)
+            loss = F.cross_entropy(logits, y)
+            self.log(f"{key}/loss", loss)
 
-        f1 = tmF.f1(y_pred, y, num_classes=2, average="none")
-        precision = tmF.precision(y_pred, y, num_classes=2, average="none")
-        recall = tmF.recall(y_pred, y, num_classes=2, average="none")
-        names = ["fri", "frii"]
+            ## Accuracy ##
+            acc = tmF.accuracy(y_pred, y)
+            self.log(f"{key}/accuracy", acc)
 
-        ## F1, precision, recall ##
-        for p, r, f, name in zip(precision, recall, f1, names):
-            self.log(f"test/{name}_precision", p)
-            self.log(f"test/{name}_recall", r)
-            self.log(f"test/{name}_f1", f)
+            f1 = tmF.f1(y_pred, y, num_classes=2, average="none")
+            precision = tmF.precision(y_pred, y, num_classes=2, average="none")
+            recall = tmF.recall(y_pred, y, num_classes=2, average="none")
+            names = ["fri", "frii"]
 
-    #        for label, name in zip([0, 1], ["fri", "frii"]):
-    #            idx = torch.nonzero((y == label)).view(-1)
-    #            logits, y_pred = self.C(x[idx, ...])
-    #            self.log_test_metrics(logits, y_pred, y[idx, ...], name)
+            ## F1, precision, recall ##
+            for p, r, f, name in zip(precision, recall, f1, names):
+                self.log(f"{key}/{name}_precision", p)
+                self.log(f"{key}/{name}_recall", r)
+                self.log(f"{key}/{name}_f1", f)
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.config["train"]["lr"])

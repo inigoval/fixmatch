@@ -1,26 +1,28 @@
 type: 'fixmatch'
-dataset: 'mirabest'
+dataset: 'mirabest-confident'
 
 data:
-    fraction: 1
-    split: 0.1
+    fraction: 1.0
+    split: 1
     val_frac: 0.2
-    u_frac: 9
+    u_frac: 2
+    fri_R: -1
 
 model:
     n_z: 32                        # latent vector length
     n_gf: 16                       # generator feature map size
     n_df: 16                       # discriminator feature map size
+    architecture: 'tang'
 
 train:
-    n_epochs: 1300
+    n_epochs: 400
     lr: 0.0001
-    batch_size: 50
+    batch_size: 30 
     fid: False
     flip: 0
 
 cut_threshold: 22
 ent_weight: 0
-mu: 7
+mu: 2
 lambda: 1
-tau: 0.95
+tau: 0.9

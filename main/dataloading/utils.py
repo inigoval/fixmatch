@@ -8,9 +8,12 @@ from torch.utils.data import DataLoader, random_split
 from pytorch_lightning.trainer.supporters import CombinedLoader
 from randaugmentmc import RandAugmentMC
 import torch.utils.data as D
+from sklearn.model_selection import train_test_split
 
 from config import load_config
 from paths import Path_Handler
+
+config = load_config()
 
 
 class Circle_Crop(torch.nn.Module):
@@ -79,10 +82,57 @@ def data_splitter(dset, fraction=1, split=1, val_frac=0.2):
     idx_dict["train_val"], idx_dict["rest"] = subindex(idx_dict["full"], fraction)
 
     # Split into train/val #
-    idx_dict["val"], idx_dict["train"] = subindex(idx_dict["train_val"], val_frac)
+    idx_dict["train"], idx_dict["val"] = train_test_split(
+        idx_dict["train_val"], test_size=val_frac, stratify=True
+    )
 
     # Split into unlabelled/labelled #
     idx_dict["l"], idx_dict["u"] = subindex(idx_dict["train"], split)
+
+    # Subset unlabelled data
+    len_u = torch.clamp(
+        torch.tensor(int(config["mu"] * len(idx_dict["l"]))),
+        0,
+        len(idx_dict["u"]),
+    ).item()
+    idx_dict["u"] = np.random.choice(idx_dict["u"], size=len_u, replace=False)
+
+    for key, idx in idx_dict.items():
+        data_dict[key] = torch.utils.data.Subset(dset, idx)
+
+    return data_dict, idx_dict
+
+
+def data_splitter_strat(dset, split=1, val_frac=0.2):
+    n = len(dset)
+    idx = np.arange(n)
+    labels = np.array(dset.targets)
+
+    data_dict, idx_dict = {"train_val": dset}, {"train_val": idx}
+
+    #    idx_dict["train_val"], idx_dict["rest"] = train_test_split(
+    #        idx_dict["full"], train_size=fraction, stratify=labels
+    #    )
+
+    # Split into train/val #
+    idx_dict["train"], idx_dict["val"] = train_test_split(
+        idx_dict["train_val"],
+        test_size=val_frac,
+        stratify=labels[idx_dict["train_val"]],
+    )
+
+    # Split into unlabelled/labelled #
+    idx_dict["l"], idx_dict["u"] = train_test_split(
+        idx_dict["train"], train_size=split, stratify=labels[idx_dict["train"]]
+    )
+
+    # Subset unlabelled data
+    len_u = torch.clamp(
+        torch.tensor(int(config["mu"] * len(idx_dict["l"]))),
+        0,
+        len(idx_dict["u"]),
+    ).item()
+    idx_dict["u"] = np.random.choice(idx_dict["u"], size=len_u, replace=False)
 
     for key, idx in idx_dict.items():
         data_dict[key] = torch.utils.data.Subset(dset, idx)
@@ -125,3 +175,24 @@ def mb_cut(dset):
     dset.sizes = dset.sizes[idx, ...]
     dset.mbflg = dset.mbflg[idx, ...]
     print(f"RGZ dataset cut to {len(dset)} samples")
+
+
+def unbalance(idx, dset, fri_R):
+    n = len(idx)
+    labels = np.array(dset.targets).flatten()[idx]
+    fri_idx = idx[np.argwhere(labels == 0).flatten()]
+    frii_idx = idx[np.argwhere(labels == 1).flatten()]
+
+    if fri_R < 0.48:
+        fri_idx = np.random.choice(
+            fri_idx, size=np.clip(int(fri_R * n), 0, len(fri_idx)), replace=False
+        )
+    else:
+        frii_idx = np.random.choice(
+            frii_idx,
+            size=np.clip(int((1 - fri_R) * n), 0, len(frii_idx)),
+            replace=False,
+        )
+
+    idx = np.concatenate((fri_idx, frii_idx)).tolist()
+    return idx

@@ -261,6 +261,47 @@ class MBFRConfident(MiraBest_full):
             self.targets = targets[exclude_mask].tolist()
 
 
+class MBFRUncertain(MiraBest_full):
+    """
+    Child class to load only uncertain FRI (0) & FRII (1)
+    [110, 112] and [210]
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(MBFRUncertain, self).__init__(*args, **kwargs)
+
+        fr1_list = [3, 4]
+        fr2_list = [7]
+        exclude_list = [0, 1, 2, 5, 6, 8, 9]
+
+        if exclude_list == []:
+            return
+        if self.train:
+            targets = np.array(self.targets)
+            exclude = np.array(exclude_list).reshape(1, -1)
+            exclude_mask = ~(targets.reshape(-1, 1) == exclude).any(axis=1)
+            fr1 = np.array(fr1_list).reshape(1, -1)
+            fr2 = np.array(fr2_list).reshape(1, -1)
+            fr1_mask = (targets.reshape(-1, 1) == fr1).any(axis=1)
+            fr2_mask = (targets.reshape(-1, 1) == fr2).any(axis=1)
+            targets[fr1_mask] = 0  # set all FRI to Class~0
+            targets[fr2_mask] = 1  # set all FRII to Class~1
+            self.data = self.data[exclude_mask]
+            self.targets = targets[exclude_mask].tolist()
+        else:
+            targets = np.array(self.targets)
+            exclude = np.array(exclude_list).reshape(1, -1)
+            exclude_mask = ~(targets.reshape(-1, 1) == exclude).any(axis=1)
+            fr1 = np.array(fr1_list).reshape(1, -1)
+            fr2 = np.array(fr2_list).reshape(1, -1)
+            fr1_mask = (targets.reshape(-1, 1) == fr1).any(axis=1)
+            fr2_mask = (targets.reshape(-1, 1) == fr2).any(axis=1)
+            targets[fr1_mask] = 0  # set all FRI to Class~0
+            targets[fr2_mask] = 1  # set all FRII to Class~1
+            self.data = self.data[exclude_mask]
+            self.targets = targets[exclude_mask].tolist()
+
+
 class RGZ20k(data.Dataset):
     """`RGZ 20k <>`_Dataset
 
