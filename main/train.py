@@ -5,15 +5,12 @@ import pytorch_lightning as pl
 
 from paths import Path_Handler
 from callbacks import MetricLogger, FeaturePlot, ImpurityLogger
-from dataloading.datamodules import (
-    mbDataModule,
-    mb_rgzDataModule,
-    mbconfidentDataModule,
-)
+from dataloading.datamodules import mbDataModule, mb_rgzDataModule
 from fixmatch import clf
-from config import load_config
+from config import load_config, update_config
 
 config = load_config()
+
 paths = Path_Handler()
 path_dict = paths._dict()
 
@@ -27,27 +24,26 @@ for seed in range(10):
 
     # Initialise wandb logger and save hyperparameters
     wandb_logger = pl.loggers.WandbLogger(
-        project="mirabest-classification-tang-strat",
+        project="mirabest-ssl",
         save_dir=path_dict["files"],
         reinit=True,
         #        mode="disabled",
     )
 
-
-    # Add variables to config # 
+    # Add/adjust variables to config based on initial parameters #
     config["seed"] = seed
+    update_config(config)
 
     data_modules = {
         "mirabest": mbDataModule(config),
-        "mirabest-confident": mbconfidentDataModule(config),
-        "mirabest-unconfident": mbconfidentDataModule(config),
         "rgz": mb_rgzDataModule(config),
     }
 
-    # Load data and record hyperparameters#
+    # Load data and record hyperparameters #
     data = data_modules[config["dataset"]]
     data.prepare_data()
     data.setup()
+    data.save_hparams()
     wandb_logger.log_hyperparams(data.hparams)
     wandb_logger.log_hyperparams(config)
 
