@@ -17,8 +17,10 @@ config = load_config()
 
 
 class Circle_Crop(torch.nn.Module):
-    """
-    Set all values outside largest possible circle that fits inside image to 0
+    """Set all values outside largest possible circle that fits inside image to 0
+
+    Returns:
+        Image image with all values around central circle masked to 0.
     """
 
     def __init__(self):
@@ -103,16 +105,12 @@ def data_splitter(dset, fraction=1, split=1, val_frac=0.2):
     return data_dict, idx_dict
 
 
-def data_splitter_strat(dset, split=1, val_frac=0.2):
+def data_splitter_strat(dset, split=1, val_frac=0.2, u_cut=True):
     n = len(dset)
     idx = np.arange(n)
     labels = np.array(dset.targets)
 
     data_dict, idx_dict = {"train_val": dset}, {"train_val": idx}
-
-    #    idx_dict["train_val"], idx_dict["rest"] = train_test_split(
-    #        idx_dict["full"], train_size=fraction, stratify=labels
-    #    )
 
     # Split into train/val #
     idx_dict["train"], idx_dict["val"] = train_test_split(
@@ -126,13 +124,14 @@ def data_splitter_strat(dset, split=1, val_frac=0.2):
         idx_dict["train"], train_size=split, stratify=labels[idx_dict["train"]]
     )
 
-    # Subset unlabelled data
-    len_u = torch.clamp(
-        torch.tensor(int(config["mu"] * len(idx_dict["l"]))),
-        0,
-        len(idx_dict["u"]),
-    ).item()
-    idx_dict["u"] = np.random.choice(idx_dict["u"], size=len_u, replace=False)
+    # Subset unlabelled data to match mu value #
+    if u_cut:
+        len_u = torch.clamp(
+            torch.tensor(int(config["mu"] * len(idx_dict["l"]))),
+            min=0,
+            max=len(idx_dict["u"]),
+        ).item()
+        idx_dict["u"] = np.random.choice(idx_dict["u"], size=len_u, replace=False)
 
     for key, idx in idx_dict.items():
         data_dict[key] = torch.utils.data.Subset(dset, idx)

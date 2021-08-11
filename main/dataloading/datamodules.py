@@ -21,7 +21,6 @@ from dataloading.utils import Circle_Crop, label_fraction, flip_targets
 from dataloading.utils import (
     size_cut,
     mb_cut,
-    data_splitter,
     subset,
     data_splitter_strat,
     unbalance,
@@ -33,10 +32,35 @@ paths = Path_Handler()
 path_dict = paths._dict()
 config = load_config()
 
-totens = T.ToTensor()
-weak_transform = lambda mu, sig : T.Compose([T.RandomHorizontalFlip(p=0.5), T.RandomRotation(180),T.ToTensor(), Circle_Crop(),T.Normalize((mu,), (sig,))])
-test_transform = lambda mu, sig : T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))])
 
+# Define transforms
+totens = T.ToTensor()
+weak_transform = lambda mu, sig: T.Compose(
+    [
+        T.RandomHorizontalFlip(p=0.5),
+        T.RandomRotation(180),
+        T.ToTensor(),
+        Circle_Crop(),
+        T.Normalize((mu,), (sig,)),
+    ]
+)
+test_transform = lambda mu, sig: T.Compose(
+    [T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))]
+)
+
+transforms = lambda mu, sig: {
+    "weak": T.Compose(
+        [
+            T.RandomHorizontalFlip(p=0.5),
+            T.RandomRotation(180),
+            T.ToTensor(),
+            Circle_Crop(),
+            T.Normalize((mu,), (sig,)),
+        ]
+    ),
+    "u": TransformFixMatch(mu, sig),
+    "test": T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))]),
+}
 
 
 class mb_rgzDataModule(pl.LightningDataModule):
@@ -45,41 +69,68 @@ class mb_rgzDataModule(pl.LightningDataModule):
         config,
     ):
         super().__init__()
-        self.cut_threshold = config["cut_threshold"]
-        self.fraction = config["data"]["fraction"]
-        self.split = config["data"]["split"]
-        self.val_frac = config["data"]["val_frac"]
-        self.batch_size = config["train"]["batch_size"]
         self.path = path_dict["data"]
-        self.hparams = {}
         self.config = config
+        self.transforms = {}
+        self.hparams = {}
 
     def prepare_data(self):
-        MB_nohybrids(path_dict["mb"], train=True, download=True)
-        MB_nohybrids(path_dict["mb"], train=False, download=True)
-        RGZ20k(path_dict["rgz"], train=True, download=True)
+        MB_nohybrids(self.path, train=True, download=True)
+        MB_nohybrids(self.path, train=False, download=True)
+        RGZ20k(self.path, train=True, download=True)
 
     def setup(self, stage=None):
-        # MiraBest test samples #
-
-        self.data, self.data_idx = data_splitter(
-            MB_nohybrids(path_dict["mb"], train=True, transform=weak_T),
-            fraction=self.fraction,
-            split=self.split,
-            val_frac=self.val_frac,
+        # Compute mean and standard deviation of combined datasets
+        mu, sig = compute_mu_sig(
+            D.ConcatDataset(
+                [
+                    MB_nohybrids(self.path, train=True, transform=totens),
+                    RGZ20k(self.path, train=True, transform=totens),
+                ]
+            )
         )
-        self.data["test"] = MB_nohybrids(path_dict["mb"], train=False, transform=test_T)
+
+        # Initialise transforms #
+        self.transforms = transforms(mu, sig)
+
+        # Initialise different subsets
+        mb = {
+            "confident": lambda transform: MBFRConfident(
+                self.path, train=True, transform=transform
+            ),
+            "unconfident": lambda transform: MBFRUncertain(
+                self.path, train=True, transform=transform
+            ),
+            "all": lambda transform: MB_nohybrids(
+                self.path, train=True, transform=transform
+            ),
+        }
+
+        self.data, self.data_idx = data_splitter_strat(
+            mb[self.config["data"]["l"]](self.transforms["weak"]),
+            split=self.config["data"]["split"],
+            val_frac=self.config["data"]["val_frac"],
+        )
+
+        self.data["test"] = MB_nohybrids(
+            path_dict["mb"], train=False, transform=self.transforms["test"]
+        )
 
         # Cut unlabelled RGZ samples and define unlabelled training set #
-        rgz = RGZ20k(path_dict["rgz"], train=True, transform=u_T)
+        rgz = RGZ20k(path_dict["rgz"], train=True, transform=self.transforms["u"])
         self.size_cut(rgz)
         mb_cut(rgz)
+
+        # Adjust unlabelled data set size to match mu value
         len_u = torch.clamp(
             torch.tensor(self.config["mu"] * len(self.data["l"])),
-            0,
-            len(self.data["u"]),
+            min=0,
+            max=len(self.data["u"]),
         ).item()
+        print(len_u)
         rgz = subset(rgz, len_u)
+
+        # Reassign unlabelled dataset with rgz data
         self.data["u"] = rgz
 
         # Flip a number of targets randomly #
@@ -89,12 +140,12 @@ class mb_rgzDataModule(pl.LightningDataModule):
         self.save_hparams()
 
     def train_dataloader(self):
-        loader_l = DataLoader(self.data["l"], self.batch_size, shuffle=True)
-        loader_u = DataLoader(
-            self.data["u"], self.batch_size * self.config["mu"], shuffle=True
-        )
+        l_batch_size = self.config["train"]["batch_size"]
+        u_batch_size = int(self.config["mu"] * l_batch_size)
+        loader_l = DataLoader(self.data["l"], l_batch_size, shuffle=True)
+        loader_u = DataLoader(self.data["u"], u_batch_size, shuffle=True)
         loaders = {"u": loader_u, "l": loader_l}
-        combined_loaders = CombinedLoader(loaders, "min_size")
+        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
         return combined_loaders
 
     def val_dataloader(self):
@@ -121,7 +172,7 @@ class mb_rgzDataModule(pl.LightningDataModule):
 
     def size_cut(self, dset):
         length = len(dset)
-        idx = np.argwhere(dset.sizes > self.cut_threshold).flatten()
+        idx = np.argwhere(dset.sizes > self.config["cut_threshold"]).flatten()
         dset.data = dset.data[idx, ...]
         dset.names = dset.names[idx, ...]
         dset.rgzid = dset.rgzid[idx, ...]
@@ -131,10 +182,6 @@ class mb_rgzDataModule(pl.LightningDataModule):
 
 
 class mbDataModule(pl.LightningDataModule):
-    """ 
-    Pytorch Lightning dataloader class for the MiraBest dataset.
-    
-    """
     def __init__(
         self,
         config,
@@ -142,45 +189,73 @@ class mbDataModule(pl.LightningDataModule):
     ):
         super().__init__()
         self.path = path
-        self.batch_size = config["train"]["batch_size"]
-        self.hparams = {}
         self.config = config
+        self.hparams = {}
+        self.transforms = {}
 
     def prepare_data(self):
-        MB_nohybrids(self.path, train=True, download=True)
         MB_nohybrids(self.path, train=False, download=True)
+        MB_nohybrids(self.path, train=True, download=True)
+        MBFRUncertain(self.path, train=True, download=True)
+        MBFRConfident(self.path, train=True, download=True)
 
     def setup(self, stage=None):
 
-        # Load dataset and calculate mean and std for renormalisation # 
-        mb = MB_nohybrids(self.path, train=True, transform=totens)
-        mu, sig = compute_mu_sig(mb)
-
-        # Define transforms # 
-        test_T = test_transform(mu, sig)
-        u_T = TransformFixMatch(mu, sig)
-        weak_T = weak_transform(mu, sig)
-        mb = MB_nohybrids(self.path, train=True, transform=weak_T)
+        mb = {
+            "confident": lambda transform: MBFRConfident(
+                self.path, train=True, transform=transform
+            ),
+            "unconfident": lambda transform: MBFRUncertain(
+                self.path, train=True, transform=transform
+            ),
+            "all": lambda transform: MB_nohybrids(
+                self.path, train=True, transform=transform
+            ),
+            "rgz": lambda transform: RGZ20k(self.path, train=True, transform=transform),
+        }
 
         self.data, self.data_idx = data_splitter_strat(
-            mb,
-            fraction=self.config['data']['fraction'],
-            split=self.config['data']['split'],
-            val_frac=self.config['data']['val_frac'],
+            mb[config["data"]["l"]](totens),
+            split=self.config["data"]["split"],
+            val_frac=self.config["data"]["val_frac"],
         )
+
+        # Draw unlabelled samples from different set if required
+        if self.config["data"]["l"] != self.config["data"]["l"]:
+            mb_u = mb[config["data"]["u"]]
+
+            # Adjust unlabelled data set size to match mu value
+            len_u = torch.clamp(
+                torch.tensor(self.config["mu"] * len(self.data["l"])),
+                min=0,
+                max=len(self.data["u"]),
+            ).item()
+
+            self.data["u"] = subset(mb_u, len_u)
+
+        # Otherwise simply change transform to unlabelled transform for chosen unlabelled points
+        else:
+            self.data["u"] = D.Subset(
+                mb[config["data"]["l"]](self.transforms["u"]), self.data_idx["u"]
+            )
+
+        # Load dataset and calculate mean and std for renormalisation #
+        mu, sig = compute_mu_sig(MB_nohybrids(self.path, train=True, transform=totens))
+
+        # Initialise transforms #
+        self.transforms = transforms(mu, sig)
 
         ## Unbalance the unlabelled dataset and change mu accordingly ##
         if self.config["data"]["fri_R"] >= 0:
             self.data_idx["u"] = unbalance(
-                self.data_idx["u"], mb, self.config["data"]["fri_R"]
+                self.data_idx["u"],
+                self.data["u"],
+                self.config["data"]["fri_R"],
             )
             self.config["mu"] = len(self.data_idx["u"]) / len(self.data_idx["l"])
             print(f"mu = {len(self.data_idx['u'])/len(self.data_idx['l'])}")
 
-        self.data["u"] = D.Subset(
-            MB_nohybrids(self.path, train=True, transform=u_T), self.data_idx["u"]
-        )
-        self.data["test"] = MB_nohybrids(self.path, train=False, transform=test_T)
+        self.data["test"] = mb["all"](self.transforms["test"])
 
         # Flip a number of targets randomly
         if config["train"]["flip"]:
@@ -190,123 +265,10 @@ class mbDataModule(pl.LightningDataModule):
         self.save_hparams()
 
     def train_dataloader(self):
-        loader_l = DataLoader(self.data["l"], self.batch_size, shuffle=True)
-
-        loader_u = DataLoader(
-            self.data["u"], int(self.batch_size * self.config["mu"]), shuffle=True
-        )
-
-        loaders = {"u": loader_u, "l": loader_l}
-
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
-
-    def val_dataloader(self):
-        loader_val = DataLoader(self.data["val"], int(len(self.data["val"])))
-        # loader_u = DataLoader(self.data["u"], int(len(self.data["u"])))
-        loaders = {"val": loader_val}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
-
-    def test_dataloader(self):
-        loader_test = DataLoader(self.data["test"], int(len(self.data["test"])))
-        loader_u = DataLoader(self.data["u"], int(len(self.data["u"])))
-        loaders = {"unlabelled": loader_u, "test": loader_test}
-        return CombinedLoader(loaders, "max_size_cycle")
-        return loaders
-
-    def save_hparams(self):
-        self.hparams.update(
-            {
-                "n_labelled": len(self.data["l"]),
-                "n_unlabelled": len(self.data["u"]),
-                "n_test": len(self.data["test"]),
-                "f_u": label_fraction(self.data["u"], 0),
-                "f_l": label_fraction(self.data["l"], 0),
-            }
-        )
-
-
-class mbconfidentDataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        config,
-        fraction=config["data"]["fraction"],
-        split=config["data"]["split"],
-        val_frac=config["data"]["val_frac"],
-        batch_size=config["train"]["batch_size"],
-        path=path_dict["data"],
-    ):
-        super().__init__()
-        self.fraction = fraction
-        self.split = split
-        self.val_frac = val_frac
-        self.batch_size = batch_size
-        self.path = path
-        self.hparams = {}
-        self.config = config
-
-    def prepare_data(self):
-        MBFRConfident(self.path, train=True, download=True)
-        MB_nohybrids(self.path, train=False, download=True)
-
-    def setup(self, stage=None):
-        mb = MBFRUncertain(self.path, train=True, transform=totens)
-        mu, sig = compute_mu_sig(mb)
-
-        test_T = T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))])
-        u_T = TransformFixMatch(mu, sig)
-        weak_T = T.Compose(
-            [
-                T.RandomRotation(180),
-                T.ToTensor(),
-                Circle_Crop(),
-                T.Normalize((mu,), (sig,)),
-            ]
-        )
-
-        mb = MBFRUncertain(self.path, train=True, transform=weak_T)
-
-        self.data, self.data_idx = data_splitter(
-            mb,
-            fraction=self.fraction,
-            split=self.split,
-            val_frac=self.val_frac,
-        )
-
-        self.data["u"] = D.ConcatDataset(
-            [
-                D.Subset(
-                    MB_nohybrids(self.path, train=True, transform=u_T),
-                    self.data_idx["u"],
-                ),
-                MBFRConfident(self.path, train=True, transform=u_T),
-            ]
-        )
-
-        self.data["test"] = MB_nohybrids(self.path, train=False, transform=test_T)
-
-        # Flip a number of targets randomly
-        if config["train"]["flip"]:
-            self.data["l"] = flip_targets(self.data["l"], config["train"]["flip"])
-
-        self.save_hparams()
-
-        self.data["test"] = MB_nohybrids(self.path, train=False, transform=test_T)
-
-        mb_u_certain = self.data["u"]
-
-        # Flip a number of targets randomly
-        if config["train"]["flip"]:
-            self.data["l"] = flip_targets(self.data["l"], config["train"]["flip"])
-
-        self.save_hparams()
-
-    def train_dataloader(self):
-        loader_l = DataLoader(self.data["l"], self.batch_size, shuffle=True)
-        loader_u = DataLoader(
-            self.data["u"], int(self.config["mu"] * self.batch_size), shuffle=True
-        )
+        l_batch_size = self.config["train"]["batch_size"]
+        u_batch_size = int(self.config["mu"] * l_batch_size)
+        loader_l = DataLoader(self.data["l"], l_batch_size, shuffle=True)
+        loader_u = DataLoader(self.data["u"], u_batch_size, shuffle=True)
         loaders = {"u": loader_u, "l": loader_l}
         combined_loaders = CombinedLoader(loaders, "max_size_cycle")
         return combined_loaders
@@ -332,141 +294,5 @@ class mbconfidentDataModule(pl.LightningDataModule):
                 "n_test": len(self.data["test"]),
                 "f_u": label_fraction(self.data["u"], 0),
                 "f_l": label_fraction(self.data["l"], 0),
-            }
-        )
-
-
-class mb_rgz_multiclassDataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        fraction=config["data"]["fraction"],
-        split=config["data"]["split"],
-        batch_size=config["train"]["batch_size"],
-    ):
-        super().__init__()
-        self.fraction = fraction
-        self.split = split
-        self.batch_size = batch_size
-        self.hparams = {}
-
-    def prepare_data(self):
-        MiraBest_full(path_dict["mb"], train=True, download=True)
-        MiraBest_full(path_dict["mb"], train=False, download=True)
-        RGZ20k(path_dict["rgz"], train=True, download=True)
-
-    def setup(self, stage=None):
-        # MiraBest test samples #
-        mb_test = MiraBest_full(
-            path_dict["mb"], train=False, transform=test_transforms["mb"]
-        )
-        self.test = mb_test
-
-        # Labelled MiraBest samples #
-        mb_l = MiraBest_full(path_dict["mb"], train=True, transform=transforms["mb"])
-        if self.fraction != 1:
-            mb_l, _ = d_split(mb_l, self.fraction)
-        self.train_l = mb_l
-
-        # Cut unlabelled RGZ samples and define unlabelled training set #
-        mb_u = RGZ20k(path_dict["rgz"], train=True, transform=transforms["mb"])
-        size_cut(config["data"]["cut_threshold"], mb_u)
-        mb_cut(mb_u)
-        self.train_u = mb_u
-
-        # Combine labelled and unlabelled datasets #
-        self.train = torch.utils.data.ConcatDataset([mb_u, mb_l])
-
-        # Flip a number of targets randomly #
-        if config["train"]["flip"]:
-            mb_l = flip_targets(mb_l, config["train"]["flip"])
-
-        self.save_hparams()
-
-    def train_dataloader(self):
-        loader_l = DataLoader(self.train_l, self.batch_size, shuffle=True)
-        loader_u = DataLoader(self.train_u, self.batch_size, shuffle=True)
-        loader_real = DataLoader(self.train, self.batch_size, shuffle=True)
-        loaders = {"u": loader_u, "l": loader_l, "real": loader_real}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
-
-    def val_dataloader(self):
-        loader_test = DataLoader(self.test, int(len(self.test) / 10))
-        loader_u = DataLoader(self.train_u, int(len(self.train_u) / 10))
-        loaders = {
-            "test": loader_test,
-            # "u": loader_u,
-        }
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
-
-    def save_hparams(self):
-        self.hparams.update(
-            {
-                "n_labelled": len(self.train_l),
-                "n_unlabelled": len(self.train_u),
-                "n_test": len(self.test),
-                "f_l": label_fraction(self.train_l, 0),
-            }
-        )
-
-
-class mnistDataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        fraction=config["data"]["fraction"],
-        split=config["data"]["split"],
-        batch_size=50,
-        path=path_dict["data"],
-    ):
-        super().__init__()
-        self.fraction = fraction
-        self.split = split
-        self.batch_size = batch_size
-        self.transform = transforms["mnist"]
-        self.path = path
-
-    def prepare_data(self):
-        MNIST(self.path, train=True, download=True)
-        MNIST(self.path, train=False, download=True)
-
-    def setup(self, stage=None):
-        mnist_train = MNIST(self.path, train=True, transform=self.transform)
-        mnist_test = MNIST(self.path, train=False, transform=self.transform)
-        self.test_dataset = mnist_test
-
-        if self.fraction != 1:
-            n = len(mnist_train)
-            n_train = int(n * self.fraction)
-            mnist_train, _ = random_split(mnist_train, [n_train, n - n_train])
-        self.train_dataset = mnist_train
-
-        n = len(mnist_train)
-        n_l = int(n * self.split)
-        mnist_l, mnist_u = random_split(mnist_train, [n_l, n - n_l])
-        self.train_dataset_u = mnist_u
-        self.train_dataset_l = mnist_l
-
-    def train_dataloader(self):
-        loader_l = DataLoader(self.train_dataset_l, self.batch_size)
-        loader_u = DataLoader(self.train_dataset_u, self.batch_size)
-        loader_real = DataLoader(self.train_dataset, self.batch_size)
-        loaders = {"u": loader_u, "l": loader_l, "real": loader_real}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
-
-    def val_dataloader(self):
-        loader_test = DataLoader(self.test_dataset, int(len(self.test_dataset) / 10))
-        loader_u = DataLoader(self.train_dataset_u, int(len(self.train_dataset_u) / 10))
-        loaders = {"u": loader_u, "test": loader_test}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
-
-    def save_hparams(self):
-        self.hparams.update(
-            {
-                "n_labelled": len(self.train_l),
-                "n_unlabelled": len(self.train_u),
-                "n_test": len(self.test),
             }
         )
