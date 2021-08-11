@@ -23,6 +23,7 @@ class TransformFixMatch(object):
     def __init__(self, mu, sig):
         self.weak = T.Compose(
             [
+                T.RandomHorizontalFlip(p=0.5),
                 T.RandomRotation(180),
                 T.ToTensor(),
                 Circle_Crop(),
@@ -31,6 +32,7 @@ class TransformFixMatch(object):
 
         self.strong = T.Compose(
             [
+                T.RandomHorizontalFlip(p=0.5),
                 T.RandomRotation(180),
                 # T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode="reflect"),
                 RandAugmentMC(n=2, m=10),

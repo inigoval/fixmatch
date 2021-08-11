@@ -2,9 +2,7 @@
 # https://github.com/ildoonet/pytorch-randaugment/blob/master/RandAugment/augmentations.py
 # https://github.com/google-research/fixmatch/blob/master/third_party/auto_augment/augmentations.py
 # https://github.com/google-research/fixmatch/blob/master/libml/ctaugment.py
-import logging
 import random
-
 import numpy as np
 import PIL
 import PIL.ImageOps
@@ -12,9 +10,10 @@ import PIL.ImageEnhance
 import PIL.ImageDraw
 from PIL import Image
 
-logger = logging.getLogger(__name__)
+from config import load_config
 
 PARAMETER_MAX = 10
+config = load_config()
 
 
 def AutoContrast(img, **kwarg):
@@ -217,7 +216,7 @@ class RandAugmentMC(object):
         ops = random.choices(self.augment_pool, k=self.n)
         for op, max_v, bias in ops:
             v = np.random.randint(1, self.m)
-            if random.random() < 0.5:
+            if random.random() < config["train"]["p-strong"]:
                 img = op(img, v=v, max_v=max_v, bias=bias)
         # img = CutoutAbs(img, int(32 * 0.5))
         return img

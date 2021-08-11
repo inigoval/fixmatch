@@ -1,12 +1,14 @@
 type: 'fixmatch'
-dataset: 'mirabest-confident'
+dataset: 'rgz'
 
 data:
     fraction: 1.0
-    split: 1
+    split: 0.2 
     val_frac: 0.2
-    u_frac: 2
+    u_frac: 7
     fri_R: -1
+    l: 'confident'
+    u: 'uncertain'
 
 model:
     n_z: 32                        # latent vector length
@@ -20,9 +22,10 @@ train:
     batch_size: 30 
     fid: False
     flip: 0
+    p-strong: 0.5
 
 cut_threshold: 22
 ent_weight: 0
-mu: 2
+mu: -1
 lambda: 1
 tau: 0.9
