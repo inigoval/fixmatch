@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 
 from paths import Path_Handler
 from callbacks import MetricLogger, FeaturePlot, ImpurityLogger
-from dataloading.datamodules import mbDataModule, mb_rgzDataModule
+from dataloading.datamodules import mbDataModule
 from fixmatch import clf
 from config import load_config, update_config
 
@@ -32,12 +32,6 @@ for seed in range(10):
 
     # Add/adjust variables to config based on initial parameters #
     config["seed"] = seed
-    update_config(config)
-
-    data_modules = {
-        "mirabest": mbDataModule(config),
-        "rgz": mb_rgzDataModule(config),
-    }
 
     # Load data and record hyperparameters #
     # data = data_modules[config["dataset"]]

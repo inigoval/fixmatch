@@ -10,8 +10,9 @@ from randaugmentmc import RandAugmentMC
 import torch.utils.data as D
 from sklearn.model_selection import train_test_split
 
-from config import load_config
+from config import load_config, update_config
 from paths import Path_Handler
+from utilities import batch_eval
 
 config = load_config()
 
@@ -146,7 +147,7 @@ def subindex(idx, fraction):
     return sub_idx, rest_idx
 
 
-def subset(dset, size):
+def random_subset(dset, size):
     idx = np.arange(size)
     subset_idx = np.random.choice(idx, size=size)
     return D.Subset(dset, subset_idx)
@@ -173,7 +174,7 @@ def mb_cut(dset):
     print(f"RGZ dataset cut to {len(dset)} samples")
 
 
-def unbalance(dset, fri_R):
+def unbalance_idx(dset, fri_R):
     n = len(dset)
     idx = dset.indices
     labels = np.array(dset.targets).flatten()[idx]
@@ -192,6 +193,4 @@ def unbalance(dset, fri_R):
         )
 
     idx = np.concatenate((fri_idx, frii_idx)).tolist()
-    dset.indices = idx
-    assert len(dset) != n
-    assert len(dset) == len(idx)
+    return idx
