@@ -186,9 +186,6 @@ class clf(pl.LightningModule):
         opt = torch.optim.Adam(self.parameters(), lr=self.config["train"]["lr"])
         return opt
 
-
-"""    def test_epoch_end(self, outputs):
-        loss = np.mean(np.asarray([l for l, a, f1, p, r in outputs]))
         acc = np.mean(np.asarray([a for l, a, f1, p, r in outputs]))
         self.log("unlabelled/loss", loss)
         self.log("unlabelled/accuracy", acc)
@@ -203,4 +200,3 @@ class clf(pl.LightningModule):
             self.log(f"unlabelled/{name}_precision", p)
             self.log(f"unlabelled/{name}_recall", r)
             self.log(f"unlabelled/{name}_f1", f)
-"""

@@ -7,7 +7,7 @@ data:
     u_frac: 7
     fri_R: -1
     l: 'confident'
-    u: 'rgz'
+    u: 'uncertain'
 
 model:
     n_z: 32                        # latent vector length
@@ -16,12 +16,12 @@ model:
     architecture: 'tang'
 
 train:
-    n_epochs: 1
+    n_epochs: 400
     lr: 0.0001
     batch_size: 30 
     fid: False
     flip: 0
-    p-strong: 0.5
+    p-strong: 0.9
 
 cut_threshold: 22
 ent_weight: 0

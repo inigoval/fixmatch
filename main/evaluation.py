@@ -19,35 +19,6 @@ def accuracy(y_hat, y):
     return accuracy
 
 
-def f1_score(y, y_pred):
-    """Calculate F1 score. Can work with gpu tensors
-    The original implmentation is written by Michal Haltuf on Kaggle.
-    Returns
-    -------
-    torch.Tensor
-        `ndim` == 1. 0 <= val <= 1
-    Reference
-    ---------
-    - https://www.kaggle.com/rejpalcz/best-loss-function-for-f1-score-metric
-    - https://scikit-learn.org/stable/modules/generated/sklearn.metrics.f1_score.html#sklearn.metrics.f1_score
-    - https://discuss.pytorch.org/t/calculating-precision-recall-and-f1-score-in-case-of-multi-label-classification/28265/6
-    """
-    _, y_pred = torch.max(y_pred, 1)
-
-    tp = (y == y_pred).sum()
-    # tn = ((1 - y) * (1 - y_pred)).sum().to(torch.float32)
-    fp = ((y + 1) == y_pred).sum()
-    fn = (y == (y_pred + 1)).sum()
-
-    epsilon = 1e-7
-
-    precision = tp / (tp + fp + epsilon)
-    recall = tp / (tp + fn + epsilon)
-
-    f1 = 2 * (precision * recall) / (precision + recall + epsilon)
-    return f1
-
-
 ################################
 #### Class balance metrics #####
 ################################
