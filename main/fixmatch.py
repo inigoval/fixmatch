@@ -6,6 +6,7 @@ import torchvision.transforms as T
 import pytorch_lightning as pl
 import wandb
 import torchmetrics.functional as tmF
+import numpy as np
 
 from torch.utils.data import DataLoader
 from statistics import mean
@@ -58,7 +59,7 @@ class clf(pl.LightningModule):
         paths.fill_dict()
         paths.dict["chk"] = (
             paths.dict["files"]
-            / f"{config['type']}_split{config['data']['split']}_{config['dataset']}_ufrac{config['mu']}"
+            / f"{config['type']}_split{config['data']['split']}_l{config['data']['l']}{config['data']['u']}_ufrac{config['mu']}"
         )
         paths.create_paths()
         self.paths = paths.dict
@@ -105,7 +106,7 @@ class clf(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         # Loop through unlabelled and test loaders to calculate metrics #
-        x, y = batch["val"]
+        x, y = batch
         logits, y_pred = self.C(x)
 
         ## Loss ##
@@ -131,23 +132,21 @@ class clf(pl.LightningModule):
             self.best_acc = acc
         self.log("val/best_accuracy", self.best_acc)
 
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch, batch_idx, dataloader_idx):
         save_path = self.paths["chk"] / f"seed_{self.config['seed']}.pt"
         torch.save(self.C_weights, save_path)
         self.C.load_state_dict(self.C_weights)
 
-        for key, data in batch.items():
-            x, y = data
-            if key == "unlabelled":
-                x = x[0]
+        if dataloader_idx == 0:
+            x, y = batch
             logits, y_pred = self.C(x)
 
             loss = F.cross_entropy(logits, y)
-            self.log(f"{key}/loss", loss)
+            self.log(f"test/loss", loss)
 
             ## Accuracy ##
             acc = tmF.accuracy(y_pred, y)
-            self.log(f"{key}/accuracy", acc)
+            self.log(f"test/accuracy", acc)
 
             f1 = tmF.f1(y_pred, y, num_classes=2, average="none")
             precision = tmF.precision(y_pred, y, num_classes=2, average="none")
@@ -156,31 +155,52 @@ class clf(pl.LightningModule):
 
             ## F1, precision, recall ##
             for p, r, f, name in zip(precision, recall, f1, names):
-                self.log(f"{key}/{name}_precision", p)
-                self.log(f"{key}/{name}_recall", r)
-                self.log(f"{key}/{name}_f1", f)
+                self.log(f"test/{name}_precision", p)
+                self.log(f"test/{name}_recall", r)
+                self.log(f"test/{name}_f1", f)
+
+        if dataloader_idx == 1:
+            x, y = batch
+            x = x[0]
+            logits, y_pred = self.C(x)
+
+            ## Accuracy and Loss ##
+            loss = F.cross_entropy(logits, y)
+            acc = tmF.accuracy(y_pred, y)
+            self.log(f"unlabelled/loss", loss)
+            self.log(f"unlabelled/accuracy", acc)
+
+            ## F1, precision, recall ##
+            f1 = tmF.f1(y_pred, y, num_classes=2, average="none")
+            precision = tmF.precision(y_pred, y, num_classes=2, average="none")
+            recall = tmF.recall(y_pred, y, num_classes=2, average="none")
+            names = ["fri", "frii"]
+
+            ## F1, precision, recall ##
+            for p, r, f, name in zip(precision, recall, f1, names):
+                self.log(f"unlabelled/{name}_precision", p)
+                self.log(f"unlabelled/{name}_recall", r)
+                self.log(f"unlabelled/{name}_f1", f)
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.config["train"]["lr"])
         return opt
 
-    ## Helper functions ##
 
-    def log_test_metrics(self, logits, y_pred, y, name):
-        ## Loss ##
-        loss = F.cross_entropy(logits, y)
-        self.log(f"test/{name}/loss", loss)
-
-        ## Accuracy ##
-        acc = tmF.accuracy(y_pred, y)
-        self.log(f"test/{name}/accuracy", acc)
+"""    def test_epoch_end(self, outputs):
+        loss = np.mean(np.asarray([l for l, a, f1, p, r in outputs]))
+        acc = np.mean(np.asarray([a for l, a, f1, p, r in outputs]))
+        self.log("unlabelled/loss", loss)
+        self.log("unlabelled/accuracy", acc)
 
         ## F1, precision, recall ##
-        f1 = tmF.f1(y_pred, y, num_classes=2)
-        self.log(f"test/{name}/f1", f1)
+        names = ["fri", "frii"]
+        f1 = np.mean(np.asarray([f1 for l, a, f1, p, r in outputs]), 0)
+        precision = np.mean(np.asarray([p for l, a, f1, p, r in outputs]), 0)
+        recall = np.mean(np.asarray([r for l, a, f1, p, r in outputs]), 0)
 
-        precision = tmF.precision(y_pred, y)
-        self.log(f"test/{name}/precision", precision)
-
-        recall = tmF.recall(y_pred, y)
-        self.log(f"test/{name}/recall", recall)
+        for p, r, f, name in zip(precision, recall, f1, names):
+            self.log(f"unlabelled/{name}_precision", p)
+            self.log(f"unlabelled/{name}_recall", r)
+            self.log(f"unlabelled/{name}_f1", f)
+"""

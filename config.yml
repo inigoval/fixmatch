@@ -1,5 +1,4 @@
 type: 'fixmatch'
-dataset: 'rgz'
 
 data:
     fraction: 1.0
@@ -8,7 +7,7 @@ data:
     u_frac: 7
     fri_R: -1
     l: 'confident'
-    u: 'uncertain'
+    u: 'rgz'
 
 model:
     n_z: 32                        # latent vector length
@@ -17,7 +16,7 @@ model:
     architecture: 'tang'
 
 train:
-    n_epochs: 400
+    n_epochs: 1
     lr: 0.0001
     batch_size: 30 
     fid: False
