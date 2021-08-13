@@ -93,6 +93,30 @@ def compute_mu_sig(dset):
     return torch.mean(x), torch.std(x)
 
 
+def batch_eval(fn_dict, dset, batch_size=200, strong_T=False):
+    """
+    Take a function which acts on data x,y and evaluates over the whole dataset in batches, returning a list of results for each calculated metric
+    """
+    n = len(dset)
+    loader = DataLoader(dset, batch_size)
+
+    # Fill the output dictionary with empty lists
+    outs = {}
+    for key in fn_dict.keys():
+        outs[key] = []
+
+    for x, y in loader:
+        # Take only weakly augmented sample if passing through unlabelled data
+        #        if strong_T:
+        #            x = x[0]
+
+        # Append result from each batch to list in outputs dictionary
+        for key, fn in fn_dict.items():
+            outs[key].append(fn(x, y))
+
+    return outs
+
+
 #################
 ### Callbacks ###
 #################
