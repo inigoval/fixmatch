@@ -40,7 +40,8 @@ for seed in range(10):
     }
 
     # Load data and record hyperparameters #
-    data = data_modules[config["dataset"]]
+    # data = data_modules[config["dataset"]]
+    data = mbDataModule(config)
     data.prepare_data()
     data.setup()
     data.save_hparams()

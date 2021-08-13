@@ -30,7 +30,7 @@ from utilities import compute_mu_sig
 
 paths = Path_Handler()
 path_dict = paths._dict()
-config = load_config()
+# config = load_config()
 
 
 # Define transforms
@@ -134,8 +134,8 @@ class mb_rgzDataModule(pl.LightningDataModule):
         self.data["u"] = rgz
 
         # Flip a number of targets randomly #
-        if config["train"]["flip"]:
-            self.data["l"] = flip_targets(self.data["l"], config["train"]["flip"])
+        if self.config["train"]["flip"]:
+            self.data["l"] = flip_targets(self.data["l"], self.config["train"]["flip"])
 
         self.save_hparams()
 
@@ -198,6 +198,7 @@ class mbDataModule(pl.LightningDataModule):
         MB_nohybrids(self.path, train=True, download=True)
         MBFRUncertain(self.path, train=True, download=True)
         MBFRConfident(self.path, train=True, download=True)
+        RGZ20k(self.path, train=True, download=True)
 
     def setup(self, stage=None):
 
@@ -215,14 +216,14 @@ class mbDataModule(pl.LightningDataModule):
         }
 
         self.data, self.data_idx = data_splitter_strat(
-            mb[config["data"]["l"]](totens),
+            mb[self.config["data"]["l"]](totens),
             split=self.config["data"]["split"],
             val_frac=self.config["data"]["val_frac"],
         )
 
         # Draw unlabelled samples from different set if required
         if self.config["data"]["l"] != self.config["data"]["l"]:
-            mb_u = mb[config["data"]["u"]]
+            mb_u = mb[self.config["data"]["u"]]
 
             # Adjust unlabelled data set size to match mu value
             len_u = torch.clamp(
@@ -232,34 +233,36 @@ class mbDataModule(pl.LightningDataModule):
             ).item()
 
             self.data["u"] = subset(mb_u, len_u)
+            self.data_idx["u"] = self.data["u"].indices
 
         # Otherwise simply change transform to unlabelled transform for chosen unlabelled points
         else:
             self.data["u"] = D.Subset(
-                mb[config["data"]["l"]](self.transforms["u"]), self.data_idx["u"]
+                mb[self.config["data"]["l"]](totens), self.data_idx["u"]
             )
-
-        # Load dataset and calculate mean and std for renormalisation #
-        mu, sig = compute_mu_sig(MB_nohybrids(self.path, train=True, transform=totens))
-
-        # Initialise transforms #
-        self.transforms = transforms(mu, sig)
 
         ## Unbalance the unlabelled dataset and change mu accordingly ##
         if self.config["data"]["fri_R"] >= 0:
             self.data_idx["u"] = unbalance(
-                self.data_idx["u"],
                 self.data["u"],
                 self.config["data"]["fri_R"],
             )
             self.config["mu"] = len(self.data_idx["u"]) / len(self.data_idx["l"])
             print(f"mu = {len(self.data_idx['u'])/len(self.data_idx['l'])}")
 
+        # Load dataset and calculate mean and std & initialise transforms #
+        mu, sig = compute_mu_sig(
+            D.ConcatDataset([self.data["l"], self.data["u"], self.data["val"]])
+        )
+        self.transforms = transforms(mu, sig)
+
+        self.data["u"] = mb[self.config["data"]["u"]](self.transforms["u"])
+        self.data["l"] = mb[self.config["data"]["l"]](self.transforms["weak"])
         self.data["test"] = mb["all"](self.transforms["test"])
 
         # Flip a number of targets randomly
-        if config["train"]["flip"]:
-            self.data["l"] = flip_targets(self.data["l"], config["train"]["flip"])
+        if self.config["train"]["flip"]:
+            self.data["l"] = flip_targets(self.data["l"], self.config["train"]["flip"])
 
         # Compute & save data hyperparameters and #
         self.save_hparams()
@@ -274,17 +277,15 @@ class mbDataModule(pl.LightningDataModule):
         return combined_loaders
 
     def val_dataloader(self):
-        loader_val = DataLoader(self.data["val"], int(len(self.data["val"])))
-        # loader_u = DataLoader(self.data["u"], int(len(self.data["u"])))
-        loaders = {"val": loader_val}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
-        return combined_loaders
+        val_batch_size = 100
+        loader_val = DataLoader(self.data["val"], val_batch_size)
+        return loader_val
 
     def test_dataloader(self):
+        u_batch_size = 200
         loader_test = DataLoader(self.data["test"], int(len(self.data["test"])))
-        loader_u = DataLoader(self.data["u"], int(len(self.data["u"])))
-        loaders = {"unlabelled": loader_u, "test": loader_test}
-        return CombinedLoader(loaders, "max_size_cycle")
+        loader_u = DataLoader(self.data["u"], u_batch_size)
+        return [loader_test, loader_u]
 
     def save_hparams(self):
         self.hparams.update(

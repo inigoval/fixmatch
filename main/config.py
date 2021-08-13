@@ -20,10 +20,7 @@ def update_config(config):
     """
     Adjust config values if using rgz data to remove obsolete values
     """
-    if config["dataset"] == "rgz":
-        del config["data"]["u"]
-
-    if config["dataset"] == "mirabest":
+    if config["data"]["u"] != "rgz":
         del config["cut_threshold"]
 
     if config["mu"] == -1:
