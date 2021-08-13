@@ -6,16 +6,6 @@ paths = Path_Handler()
 path_dict = paths._dict()
 
 
-def load_config():
-    """
-    Helper function to load config file
-    """
-    path = path_dict["root"] / "config.yml"
-    with open(path, "r") as ymlconfig:
-        config = yaml.load(ymlconfig, Loader=yaml.FullLoader)
-    return config
-
-
 def update_config(config):
     """
     Adjust config values if using rgz data to remove obsolete values
@@ -25,3 +15,15 @@ def update_config(config):
 
     if config["mu"] == -1:
         config["mu"] = config["data"]["u_frac"]
+
+
+def load_config():
+    """
+    Helper function to load config file
+    """
+    path = path_dict["root"] / "config.yml"
+    with open(path, "r") as ymlconfig:
+        config = yaml.load(ymlconfig, Loader=yaml.FullLoader)
+
+    update_config(config)
+    return config
