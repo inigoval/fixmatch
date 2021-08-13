@@ -147,11 +147,8 @@ def subindex(idx, fraction):
 
 
 def subset(dset, size):
-    # fraction = fraction
-    # length = len(dset)
     idx = np.arange(size)
     subset_idx = np.random.choice(idx, size=size)
-    # subset_idx = np.random.choice(idx, size=int(fraction * length))
     return D.Subset(dset, subset_idx)
 
 
@@ -176,8 +173,9 @@ def mb_cut(dset):
     print(f"RGZ dataset cut to {len(dset)} samples")
 
 
-def unbalance(idx, dset, fri_R):
-    n = len(idx)
+def unbalance(dset, fri_R):
+    n = len(dset)
+    idx = dset.indices
     labels = np.array(dset.targets).flatten()[idx]
     fri_idx = idx[np.argwhere(labels == 0).flatten()]
     frii_idx = idx[np.argwhere(labels == 1).flatten()]
@@ -194,4 +192,6 @@ def unbalance(idx, dset, fri_R):
         )
 
     idx = np.concatenate((fri_idx, frii_idx)).tolist()
-    return idx
+    dset.indices = idx
+    assert len(dset) != n
+    assert len(dset) == len(idx)
