@@ -142,11 +142,11 @@ class clf(pl.LightningModule):
             logits, y_pred = self.C(x)
 
             loss = F.cross_entropy(logits, y)
-            self.log(f"test/loss", loss)
+            self.log(f"test/loss", loss, add_dataloader_idx=False)
 
             ## Accuracy ##
             acc = tmF.accuracy(y_pred, y)
-            self.log(f"test/accuracy", acc)
+            self.log(f"test/accuracy", acc, add_dataloader_idx=False)
 
             f1 = tmF.f1(y_pred, y, num_classes=2, average="none")
             precision = tmF.precision(y_pred, y, num_classes=2, average="none")
@@ -155,9 +155,9 @@ class clf(pl.LightningModule):
 
             ## F1, precision, recall ##
             for p, r, f, name in zip(precision, recall, f1, names):
-                self.log(f"test/{name}_precision", p)
-                self.log(f"test/{name}_recall", r)
-                self.log(f"test/{name}_f1", f)
+                self.log(f"test/{name}_precision", p, add_dataloader_idx=False)
+                self.log(f"test/{name}_recall", r, add_dataloader_idx=False)
+                self.log(f"test/{name}_f1", f, add_dataloader_idx=False)
 
         if dataloader_idx == 1:
             x, y = batch
@@ -167,8 +167,8 @@ class clf(pl.LightningModule):
             ## Accuracy and Loss ##
             loss = F.cross_entropy(logits, y)
             acc = tmF.accuracy(y_pred, y)
-            self.log(f"unlabelled/loss", loss)
-            self.log(f"unlabelled/accuracy", acc)
+            self.log(f"unlabelled/loss", loss, add_dataloader_idx=False)
+            self.log(f"unlabelled/accuracy", acc, add_dataloader_idx=False)
 
             ## F1, precision, recall ##
             f1 = tmF.f1(y_pred, y, num_classes=2, average="none")
@@ -178,9 +178,9 @@ class clf(pl.LightningModule):
 
             ## F1, precision, recall ##
             for p, r, f, name in zip(precision, recall, f1, names):
-                self.log(f"unlabelled/{name}_precision", p)
-                self.log(f"unlabelled/{name}_recall", r)
-                self.log(f"unlabelled/{name}_f1", f)
+                self.log(f"unlabelled/{name}_precision", p, add_dataloader_idx=False)
+                self.log(f"unlabelled/{name}_recall", r, add_dataloader_idx=False)
+                self.log(f"unlabelled/{name}_f1", f, add_dataloader_idx=False)
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.config["train"]["lr"])
