@@ -2,7 +2,7 @@ type: 'fixmatch'
 
 data:
     fraction: 1.0
-    split: 0.2 
+    split: 0.1
     val_frac: 0.2
     u_frac: 7
     fri_R: -1
@@ -21,7 +21,7 @@ train:
     batch_size: 30 
     fid: False
     flip: 0
-    p-strong: 0.9
+    p-strong: 0.5
 
 cut_threshold: 22
 ent_weight: 0

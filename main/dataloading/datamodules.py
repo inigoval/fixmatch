@@ -60,6 +60,7 @@ transforms = lambda mu, sig: {
     ),
     "u": TransformFixMatch(mu, sig),
     "test": T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))]),
+    "val": T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))]),
 }
 
 
@@ -73,7 +74,6 @@ class mbDataModule(pl.LightningDataModule):
         self.path = path
         self.config = config
         self.hparams = {}
-        self.transforms = {}
 
     def prepare_data(self):
         MB_nohybrids(self.path, train=False, download=True)
@@ -94,6 +94,9 @@ class mbDataModule(pl.LightningDataModule):
             "all": lambda transform: MB_nohybrids(
                 self.path, train=True, transform=transform
             ),
+            "test": lambda transform: MB_nohybrids(
+                self.path, train=False, transform=transform
+            ),
             "rgz": lambda transform: RGZ20k(self.path, train=True, transform=transform),
         }
 
@@ -107,7 +110,6 @@ class mbDataModule(pl.LightningDataModule):
             split=self.config["data"]["split"],
             val_frac=self.config["data"]["val_frac"],
         )
-
         # Draw unlabelled samples from different set if required
         if self.config["data"]["l"] != self.config["data"]["u"]:
             n_max = len(datasets["u"](totens))
@@ -145,7 +147,12 @@ class mbDataModule(pl.LightningDataModule):
         self.data["l"] = D.Subset(
             datasets["l"](self.transforms["weak"]), self.data_idx["l"]
         )
-        self.data["test"] = mb["all"](self.transforms["test"])
+
+        self.data["val"] = D.Subset(
+            datasets["l"](self.transforms["val"]), self.data_idx["val"]
+        )
+
+        self.data["test"] = mb["test"](self.transforms["test"])
 
         # Flip a number of targets randomly
         if self.config["train"]["flip"]:
