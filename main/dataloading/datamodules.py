@@ -73,7 +73,7 @@ class mbDataModule(pl.LightningDataModule):
         super().__init__()
         self.path = path
         self.config = config
-        self.hparams = {}
+        self.hyperparams = {}
 
     def prepare_data(self):
         MB_nohybrids(self.path, train=False, download=True)
@@ -182,7 +182,7 @@ class mbDataModule(pl.LightningDataModule):
         return [loader_test, loader_u]
 
     def save_hparams(self):
-        self.hparams.update(
+        self.hyperparams.update(
             {
                 "n_labelled": len(self.data["l"]),
                 "n_unlabelled": len(self.data["u"]),

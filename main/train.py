@@ -39,7 +39,7 @@ for seed in range(10):
     data.prepare_data()
     data.setup()
     data.save_hparams()
-    wandb_logger.log_hyperparams(data.hparams)
+    wandb_logger.log_hyperparams(data.hyperparams)
     wandb_logger.log_hyperparams(config)
 
     trainer = pl.Trainer(
