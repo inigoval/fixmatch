@@ -52,9 +52,9 @@ def CutoutAbs(img, v, **kwarg):
     x1 = int(min(w, x0 + v))
     y1 = int(min(h, y0 + v))
     xy = (x0, y0, x1, y1)
-    # gray
-    # color = (127, 127, 127) img = img.copy()
-    PIL.ImageDraw.Draw(img).rectangle(xy)
+    color = 127  # gray pixel value
+    img = img.copy()
+    PIL.ImageDraw.Draw(img).rectangle(xy, fill=color)
     return img
 
 
@@ -218,5 +218,6 @@ class RandAugmentMC(object):
             v = np.random.randint(1, self.m)
             if random.random() < config["train"]["p-strong"]:
                 img = op(img, v=v, max_v=max_v, bias=bias)
-        # img = CutoutAbs(img, int(32 * 0.5))
+        if config["train"]["cutout"]:
+            img = CutoutAbs(img, int(32 * 0.5))
         return img

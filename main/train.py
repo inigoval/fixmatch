@@ -38,7 +38,6 @@ for seed in range(10):
     data = mbDataModule(config)
     data.prepare_data()
     data.setup()
-    data.save_hparams()
     wandb_logger.log_hyperparams(data.hyperparams)
     wandb_logger.log_hyperparams(config)
 

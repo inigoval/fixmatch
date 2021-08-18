@@ -22,6 +22,7 @@ train:
     fid: False
     flip: 0
     p-strong: 0.5
+    cutout: True
 
 cut_threshold: 22
 ent_weight: 0
