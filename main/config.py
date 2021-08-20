@@ -17,7 +17,7 @@ def update_config(config):
         config["mu"] = config["data"]["u_frac"]
 
     if config["data"]["u"] == "rgz":
-        config["data"]["fri_R"] == -1
+        config["data"]["fri_R"] = -1
 
 
 def load_config():
