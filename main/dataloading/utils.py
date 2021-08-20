@@ -177,11 +177,11 @@ def mb_cut(dset):
 def unbalance_idx(dset, fri_R):
     n = len(dset)
     idx = dset.indices
-    labels = np.array(dset.targets).flatten()[idx]
+    labels = np.array(dset.dataset.targets).flatten()[idx]
     fri_idx = idx[np.argwhere(labels == 0).flatten()]
     frii_idx = idx[np.argwhere(labels == 1).flatten()]
 
-    if fri_R < 0.48:
+    if fri_R < len(fri_idx) / (len(fri_idx) + len(frii_idx)):
         fri_idx = np.random.choice(
             fri_idx, size=np.clip(int(fri_R * n), 0, len(fri_idx)), replace=False
         )
