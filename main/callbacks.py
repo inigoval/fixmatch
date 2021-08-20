@@ -46,20 +46,6 @@ class MetricLogger(pl.Callback):
 
         H_wrong = np.mean(entropy(y_hat[idx_wrong, ...]))
         pl_module.log("average misclassification entropy", H_wrong)
-        # pl_module.log("test/average misclassification probability", torch.mean(p_pred))
-
-        # Plot bar chart of incorrect indices #
-
-
-#        data = [[idx + 0.1] for idx in idx_wrong.tolist()]
-#        table = wandb.Table(data=data, columns=["index"])
-#        trainer.logger.experiment.log(
-#            {
-#                "test/misclassifications": wandb.plot.histogram(
-#                    table, "index", title="misclassifications"
-#                )
-#            }
-#        )
 
 
 class FeaturePlot(pl.Callback):
@@ -120,16 +106,6 @@ class ImpurityLogger(pl.Callback):
 
         impurities = np.sum(np.asarray(outs["impurities"])) / len(data_u)
         pl_module.log("train/impurities", impurities / (mask_rate + 0.0000001))
-
-    #        tau = pl_module.config["tau"]
-    #        x, y = dset2tens(pl_module.trainer.datamodule.data["u"])
-    #
-    #        y_hat = pl_module.forward(x)
-    #        p_pred, y_pred = torch.max(y_hat, 1)
-    #
-    #        mask_rate = self.calc_mask_rate(tau, p_pred)
-    #
-    #        impurities = self.calc_impurities(tau, p_pred, y_pred, y)
 
     def on_test_epoch_end(self, trainer, pl_module):
 

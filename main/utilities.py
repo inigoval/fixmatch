@@ -93,7 +93,7 @@ def compute_mu_sig(dset):
     return torch.mean(x), torch.std(x)
 
 
-def batch_eval(fn_dict, dset, batch_size=200, strong_T=False):
+def batch_eval(fn_dict, dset, batch_size=200):
     """
     Take functions which acts on data x,y and evaluates over the whole dataset in batches, returning a list of results for each calculated metric
     """

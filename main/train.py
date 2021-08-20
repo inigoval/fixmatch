@@ -7,6 +7,7 @@ from paths import Path_Handler
 from callbacks import MetricLogger, FeaturePlot, ImpurityLogger
 from dataloading.datamodules import mbDataModule
 from fixmatch import clf
+from baseline import baseline_clf
 from config import load_config, update_config
 
 config = load_config()
@@ -14,10 +15,17 @@ config = load_config()
 paths = Path_Handler()
 path_dict = paths._dict()
 
-# Save model with best accuracy for test evaluation #
-# checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val/accuracy", mode="max")
+for seed in range(1):
 
-for seed in range(10):
+    # Save model with best accuracy for test evaluation #
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        monitor="val/accuracy",
+        mode="max",
+        every_n_epochs=3,
+        save_on_train_epoch_end=False,
+        auto_insert_metric_name=True,
+        verbose=True,
+    )
 
     ## Set seeds for reproducibility ##
     pl.seed_everything(seed)
@@ -34,7 +42,6 @@ for seed in range(10):
     config["seed"] = seed
 
     # Load data and record hyperparameters #
-    # data = data_modules[config["dataset"]]
     data = mbDataModule(config)
     data.prepare_data()
     data.setup()
@@ -46,15 +53,16 @@ for seed in range(10):
         max_epochs=config["train"]["n_epochs"],
         logger=wandb_logger,
         deterministic=True,
-        callbacks=[MetricLogger(), ImpurityLogger()],
+        callbacks=[MetricLogger(), ImpurityLogger(), checkpoint_callback],
         check_val_every_n_epoch=3,
-        log_every_n_steps=20,
+        log_every_n_steps=10,
     )
 
+    # models = {"fixmatch": clf(config), "baseline": baseline_clf(config)}
     model = clf(config)
 
     # Train model #
     trainer.fit(model, data)
-    trainer.test()
+    trainer.test(ckpt_path="best")
 
     wandb_logger.experiment.finish()

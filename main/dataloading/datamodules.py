@@ -120,7 +120,7 @@ class mbDataModule(pl.LightningDataModule):
                 max=n_max,
             ).item()
 
-            self.data_idx["u"] = np.random.choice(np.arange(n_max), n)
+            self.data_idx["u"] = np.random.choice(np.arange(n_max), int(n))
             self.data["u"] = D.Subset(datasets["u"](totens), self.data_idx["u"])
 
         ## Unbalance the unlabelled dataset and change mu accordingly ##
