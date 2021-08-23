@@ -15,7 +15,7 @@ config = load_config()
 paths = Path_Handler()
 path_dict = paths._dict()
 
-for seed in range(1):
+for seed in range(10):
 
     # Save model with best accuracy for test evaluation #
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
@@ -48,12 +48,17 @@ for seed in range(1):
     wandb_logger.log_hyperparams(data.hyperparams)
     wandb_logger.log_hyperparams(config)
 
+    callbacks = {
+        "baseline": [MetricLogger(), checkpoint_callback],
+        "fixmatch": [MetricLogger(), ImpurityLogger(), checkpoint_callback],
+    }
+
     trainer = pl.Trainer(
         gpus=1,
         max_epochs=config["train"]["n_epochs"],
         logger=wandb_logger,
         deterministic=True,
-        callbacks=[MetricLogger(), ImpurityLogger(), checkpoint_callback],
+        callbacks=callbacks[config["type"]],
         check_val_every_n_epoch=3,
         log_every_n_steps=10,
     )

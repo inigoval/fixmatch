@@ -1,18 +1,18 @@
-type: 'fixmatch'
+type: 'baseline'
 
 data:
-    fraction: 1.0
-    split: 0.1
+    fraction: 1.0               # fraction of data-set to use at all
+    split: 0.1                  # fraction of data-set to retain labels
     val_frac: 0.2
     u_frac: 7
-    fri_R: -1
-    l: 'confident'
-    u: 'uncertain'
+    fri_R: -1                 # fraction of unlabelled data-set to contain FR1
+    l: 'confident'              # dataset options: confident, uncertain, all, test, rgz
+    u: 'uncertain'              # dataset options: confident, uncertain, all, test, rgz
 
 model:
-    n_z: 32                        # latent vector length
-    n_gf: 16                       # generator feature map size
-    n_df: 16                       # discriminator feature map size
+    n_z: 32                     # latent vector length
+    n_gf: 16                    # generator feature map size
+    n_df: 16                    # discriminator feature map size
     architecture: 'tang'
 
 train:
@@ -22,9 +22,10 @@ train:
     fid: False
     flip: 0
     p-strong: 0.5
-    cutout: True
 
-cut_threshold: 22
+cut_threshold: 29
+cutout: 0
+randpixel: 0
 ent_weight: 0
 mu: -1
 lambda: 1
