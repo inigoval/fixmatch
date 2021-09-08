@@ -51,7 +51,7 @@ def CutoutAbs(img, v, **kwarg):
     x1 = int(min(w, x0 + v))
     y1 = int(min(h, y0 + v))
     xy = (x0, y0, x1, y1)
-    color = 127  # gray pixel value
+    color = 255  # white pixel value
     img = img.copy()
     PIL.ImageDraw.Draw(img).rectangle(xy, fill=color)
     return img
@@ -144,10 +144,10 @@ def _int_parameter(v, max_v):
 def fixmatch_augment_pool():
     # FixMatch paper
     augs = [
-        # (AutoContrast, None, None),
+        (AutoContrast, None, None),
         (Brightness, 0.9, 0.05),
-        # (Color, 0.9, 0.05),
-        # (Contrast, 0.9, 0.05),
+        (Color, 0.9, 0.05),
+        (Contrast, 0.9, 0.05),
         (Equalize, None, None),
         (Identity, None, None),
         (Posterize, 4, 4),
@@ -162,30 +162,37 @@ def fixmatch_augment_pool():
     return augs
 
 
-def my_augment_pool():
-    # Test
-    augs = [
+def my_augment_pool(color=False):
+    bw_augs = [
         (AutoContrast, None, None),
-        (Brightness, 1.8, 0.1),
-        (Color, 1.8, 0.1),
-        (Contrast, 1.8, 0.1),
-        (Cutout, 0.2, 0),
+        (Brightness, 0.9, 0.05),
+        (Contrast, 0.9, 0.05),
         (Equalize, None, None),
-        (Invert, None, None),
+        (Identity, None, None),
+        (Invert, 0, 0),
         (Posterize, 4, 4),
-        (Rotate, 30, 0),
-        (Sharpness, 1.8, 0.1),
+        (Sharpness, 0.9, 0.05),
         (ShearX, 0.3, 0),
         (ShearY, 0.3, 0),
         (Solarize, 256, 0),
         (SolarizeAdd, 110, 0),
-        (TranslateX, 0.45, 0),
-        (TranslateY, 0.45, 0),
+        (TranslateX, 0.3, 0),
+        (TranslateY, 0.3, 0),
     ]
+
+    color_augs = [
+        (Color, 0.9, 0.05),
+    ]
+
+    if color:
+        augs = bw_augs + color_augs
+    else:
+        augs = bw_augs
+
     return augs
 
 
-class RandAugmentPC(object):
+class RandAugmentMC(object):
     def __init__(self, n, m):
         assert n >= 1
         assert 1 <= m <= 10
@@ -196,27 +203,11 @@ class RandAugmentPC(object):
     def __call__(self, img):
         ops = random.choices(self.augment_pool, k=self.n)
         for op, max_v, bias in ops:
-            prob = np.random.uniform(0.2, 0.8)
-            if random.random() + prob >= 1:
-                img = op(img, v=self.m, max_v=max_v, bias=bias)
-        img = CutoutAbs(img, int(32 * 0.5))
-        return img
-
-
-class RandAugmentMC(object):
-    def __init__(self, n, m):
-        assert n >= 1
-        assert 1 <= m <= 10
-        self.n = n
-        self.m = m
-        self.augment_pool = fixmatch_augment_pool()
-
-    def __call__(self, img):
-        ops = random.choices(self.augment_pool, k=self.n)
-        for op, max_v, bias in ops:
             v = np.random.randint(1, self.m)
-            if random.random() < config["train"]["p-strong"]:
+            if random.random() < config["p-strong"]:
                 img = op(img, v=v, max_v=max_v, bias=bias)
-        if config["train"]["cutout"]:
-            img = CutoutAbs(img, int(32 * 0.5))
+
+        if config["cutout"] > 0:
+            img = CutoutAbs(img, int(config["cutout"] * 0.5))
+
         return img
