@@ -106,7 +106,10 @@ def data_splitter(dset, fraction=1, split=1, val_frac=0.2):
     return data_dict, idx_dict
 
 
-def data_splitter_strat(dset, split=1, val_frac=0.2, u_cut=True):
+def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=True):
+    if not seed:
+        seed = np.random.randint(9999999)
+
     n = len(dset)
     idx = np.arange(n)
     labels = np.array(dset.targets)
@@ -118,11 +121,15 @@ def data_splitter_strat(dset, split=1, val_frac=0.2, u_cut=True):
         idx_dict["train_val"],
         test_size=val_frac,
         stratify=labels[idx_dict["train_val"]],
+        random_state=seed,
     )
 
     # Split into unlabelled/labelled #
     idx_dict["l"], idx_dict["u"] = train_test_split(
-        idx_dict["train"], train_size=split, stratify=labels[idx_dict["train"]]
+        idx_dict["train"],
+        train_size=split,
+        stratify=labels[idx_dict["train"]],
+        random_state=seed,
     )
 
     # Subset unlabelled data to match mu value #

@@ -27,26 +27,19 @@ for _ in range(10):
         verbose=True,
     )
 
-    ## Set seeds for reproducibility ##
-    pl.seed_everything(seed)
-
     # Initialise wandb logger and save hyperparameters
     wandb_logger = pl.loggers.WandbLogger(
         project="mirabest-ssl",
         save_dir=path_dict["files"],
         reinit=True,
-        #        mode="disabled",
+        config=config,
     )
-
-    # Add/adjust variables to config based on initial parameters #
-    config["seed"] = seed
 
     # Load data and record hyperparameters #
     data = mbDataModule(config)
     data.prepare_data()
     data.setup()
     wandb_logger.log_hyperparams(data.hyperparams)
-    wandb_logger.log_hyperparams(config)
 
     callbacks = {
         "baseline": [MetricLogger(), checkpoint_callback],
@@ -63,7 +56,7 @@ for _ in range(10):
         log_every_n_steps=10,
     )
 
-    # models = {"fixmatch": clf(config), "baseline": baseline_clf(config)}
+    # initialise model
     model = clf(config)
 
     # Train model #
