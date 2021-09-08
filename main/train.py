@@ -15,7 +15,7 @@ config = load_config()
 paths = Path_Handler()
 path_dict = paths._dict()
 
-for seed in range(10):
+for _ in range(10):
 
     # Save model with best accuracy for test evaluation #
     checkpoint_callback = pl.callbacks.ModelCheckpoint(

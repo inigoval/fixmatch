@@ -96,6 +96,7 @@ class clf(pl.LightningModule):
             ## Total Loss ##
             loss = ce_loss + self.config["lambda"] * pseudo_loss
             self.log("train/loss", loss)
+            return loss
 
         elif self.config["type"] == "baseline":
             x_l, y_l = batch["l"]
@@ -109,10 +110,7 @@ class clf(pl.LightningModule):
 
             ## Total Loss ##
             self.log("train/loss", loss)
-
-        return loss
-
-        return loss
+            return loss
 
     def validation_step(self, batch, batch_idx):
         # Loop through unlabelled and test loaders to calculate metrics #
@@ -184,20 +182,5 @@ class clf(pl.LightningModule):
                 self.log(f"unlabelled/{name}_f1", f, add_dataloader_idx=False)
 
     def configure_optimizers(self):
-        opt = torch.optim.Adam(self.parameters(), lr=self.config["train"]["lr"])
+        opt = torch.optim.Adam(self.parameters(), lr=self.config["lr"])
         return opt
-
-        acc = np.mean(np.asarray([a for l, a, f1, p, r in outputs]))
-        self.log("unlabelled/loss", loss)
-        self.log("unlabelled/accuracy", acc)
-
-        ## F1, precision, recall ##
-        names = ["fri", "frii"]
-        f1 = np.mean(np.asarray([f1 for l, a, f1, p, r in outputs]), 0)
-        precision = np.mean(np.asarray([p for l, a, f1, p, r in outputs]), 0)
-        recall = np.mean(np.asarray([r for l, a, f1, p, r in outputs]), 0)
-
-        for p, r, f, name in zip(precision, recall, f1, names):
-            self.log(f"unlabelled/{name}_precision", p)
-            self.log(f"unlabelled/{name}_recall", r)
-            self.log(f"unlabelled/{name}_f1", f)

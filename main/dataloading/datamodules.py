@@ -35,18 +35,6 @@ path_dict = paths._dict()
 
 # Define transforms
 totens = T.ToTensor()
-weak_transform = lambda mu, sig: T.Compose(
-    [
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomRotation(180),
-        T.ToTensor(),
-        Circle_Crop(),
-        T.Normalize((mu,), (sig,)),
-    ]
-)
-test_transform = lambda mu, sig: T.Compose(
-    [T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))]
-)
 
 transforms = lambda mu, sig: {
     "weak": T.Compose(
