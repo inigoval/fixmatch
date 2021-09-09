@@ -97,7 +97,7 @@ class mbDataModule(pl.LightningDataModule):
             datasets["l"](totens),
             split=self.config["data"]["split"],
             val_frac=self.config["data"]["val_frac"],
-            seed=self.config["data"]["seed"],
+            seed=self.config["seed"],
         )
         # Draw unlabelled samples from different set if required
         if self.config["data"]["l"] != self.config["data"]["u"]:
@@ -156,7 +156,7 @@ class mbDataModule(pl.LightningDataModule):
         loader_l = DataLoader(self.data["l"], l_batch_size, shuffle=True)
         loader_u = DataLoader(self.data["u"], u_batch_size, shuffle=True)
         loaders = {"u": loader_u, "l": loader_l}
-        combined_loaders = CombinedLoader(loaders, "max_size_cycle")
+        combined_loaders = CombinedLoader(loaders, "min_size")
         return combined_loaders
 
     def val_dataloader(self):

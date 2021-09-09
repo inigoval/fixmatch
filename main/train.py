@@ -7,7 +7,6 @@ from paths import Path_Handler
 from callbacks import MetricLogger, FeaturePlot, ImpurityLogger
 from dataloading.datamodules import mbDataModule
 from fixmatch import clf
-from baseline import baseline_clf
 from config import load_config, update_config
 
 config = load_config()
@@ -15,7 +14,9 @@ config = load_config()
 paths = Path_Handler()
 path_dict = paths._dict()
 
-for _ in range(10):
+for s in range(10):
+
+    pl.seed_everything(s)
 
     # Save model with best accuracy for test evaluation #
     checkpoint_callback = pl.callbacks.ModelCheckpoint(

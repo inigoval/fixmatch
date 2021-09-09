@@ -7,7 +7,6 @@ from paths import Path_Handler
 from callbacks import MetricLogger, FeaturePlot, ImpurityLogger
 from dataloading.datamodules import mbDataModule
 from fixmatch import clf
-from baseline import baseline_clf
 from config import load_config, update_config
 
 config = load_config()
@@ -34,6 +33,8 @@ wandb_logger = pl.loggers.WandbLogger(
 )
 
 config = wandb_logger.experiment.config
+
+print(config)
 
 # Load data and record hyperparameters #
 data = mbDataModule(config)
