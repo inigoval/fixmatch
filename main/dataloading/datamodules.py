@@ -72,6 +72,8 @@ class mbDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
 
+        # if self.config['data']['split'] == 1:
+
         mb = {
             "confident": lambda transform: MBFRConfident(
                 self.path, train=True, transform=transform
@@ -149,6 +151,9 @@ class mbDataModule(pl.LightningDataModule):
 
         # Compute & save data hyperparameters and #
         self.save_hparams()
+
+        print(self.config["data"]["l"])
+        print(self.data_idx["l"])
 
     def train_dataloader(self):
         l_batch_size = self.config["batch_size"]

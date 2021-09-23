@@ -106,7 +106,7 @@ def data_splitter(dset, fraction=1, split=1, val_frac=0.2):
     return data_dict, idx_dict
 
 
-def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=True):
+def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=False):
     if seed == None:
         seed = np.random.randint(9999999)
 
@@ -133,7 +133,7 @@ def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=True):
     )
 
     # Subset unlabelled data to match mu value #
-    if u_cut > 0:
+    if u_cut:
         len_u = torch.clamp(
             torch.tensor(int(config["mu"] * len(idx_dict["l"]))),
             min=0,

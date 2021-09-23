@@ -30,7 +30,7 @@ for s in range(10):
 
     # Initialise wandb logger and save hyperparameters
     wandb_logger = pl.loggers.WandbLogger(
-        project="mirabest-ssl",
+        project="mirabest-ssl-t",
         save_dir=path_dict["files"],
         reinit=True,
         config=config,
@@ -62,6 +62,11 @@ for s in range(10):
 
     # Train model #
     trainer.fit(model, data)
+
+    # Print label indices #
+    print("labelled data indices: ", data.data_idx["l"])
+
+    # Run test loop #
     trainer.test(ckpt_path="best")
 
     wandb_logger.experiment.finish()

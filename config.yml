@@ -1,11 +1,11 @@
-type: 'fixmatch'
+type: 'baseline'
 
 data:
     fraction: 1.0               # fraction of data-set to use at all
-    split: 0.1                # fraction of data-set to retain labels
-    val_frac: 0.05
+    split: 1            # fraction of data-set to retain labels
+    val_frac: 0.2
     u_frac: -1
-    fri_R: -1                   # fraction of unlabelled data-set to contain FR1
+    fri_R: -1                  # fraction of unlabelled data-set to contain FR1
     l: 'all'              # dataset options: confident, uncertain, all, test, rgz
     u: 'all'              # dataset options: confident, uncertain, all, test, rgz
 
@@ -21,6 +21,7 @@ train:
     flip: 0
 
 seed: null
+
 # optimisable hyperparams
 cut_threshold: 29
 cutout: 0
@@ -29,4 +30,4 @@ lambda: 1
 tau: 0.95
 p-strong: 1
 lr: 0.0005
-batch_size: 20
+batch_size: 50

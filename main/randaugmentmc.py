@@ -1,6 +1,5 @@
-# code in this file is adpated from
-# https://github.com/ildoonet/pytorch-randaugment/blob/master/RandAugment/augmentations.py
-# https://github.com/google-research/fixmatch/blob/master/third_party/auto_augment/augmentations.py https://github.com/google-research/fixmatch/blob/master/libml/ctaugment.py
+# code in this file is adapted from https://github.com/kekmodel/FixMatch-pytorch
+
 import random
 import numpy as np
 import PIL
