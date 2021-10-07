@@ -101,9 +101,18 @@ class mbDataModule(pl.LightningDataModule):
             val_frac=self.config["data"]["val_frac"],
             seed=self.config["seed"],
         )
+
         # Draw unlabelled samples from different set if required
         if self.config["data"]["l"] != self.config["data"]["u"]:
             n_max = len(datasets["u"](totens))
+            self.data_idx["u"] = np.arange(n_max)
+
+            # Apply angular size lower limit if using rgz
+            if self.config["data"]["u"] == "rgz":
+                self.data_idx["u"] = size_cut(
+                    self.config["cut_threshold"], datasets["u"](totens)
+                )
+
             # Adjust unlabelled data set size to match mu value
             n = torch.clamp(
                 torch.tensor(self.config["mu"] * len(self.data["l"])),
@@ -111,7 +120,7 @@ class mbDataModule(pl.LightningDataModule):
                 max=n_max,
             ).item()
 
-            self.data_idx["u"] = np.random.choice(np.arange(n_max), int(n))
+            self.data_idx["u"] = np.random.choice(self.data_idx["u"], int(n))
             self.data["u"] = D.Subset(datasets["u"](totens), self.data_idx["u"])
 
         ## Unbalance the unlabelled dataset and change mu accordingly ##

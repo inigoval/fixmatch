@@ -163,11 +163,7 @@ def random_subset(dset, size):
 def size_cut(threshold, dset):
     length = len(dset)
     idx = np.argwhere(dset.sizes > threshold).flatten()
-    dset.data = dset.data[idx, ...]
-    dset.names = dset.names[idx, ...]
-    dset.rgzid = dset.rgzid[idx, ...]
-    dset.sizes = dset.sizes[idx, ...]
-    dset.mbflg = dset.mbflg[idx, ...]
+    return idx
 
 
 def mb_cut(dset):
