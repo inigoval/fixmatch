@@ -114,11 +114,16 @@ class mbDataModule(pl.LightningDataModule):
                 )
 
             # Adjust unlabelled data set size to match mu value
-            n = torch.clamp(
-                torch.tensor(self.config["mu"] * len(self.data["l"])),
-                min=0,
-                max=n_max,
-            ).item()
+            if self.config["data"]["clamp_u"]:
+                n = torch.clamp(
+                    torch.tensor(
+                        self.config["data"]["clamp_u"]
+                        * len(self.data["l"])
+                        * self.config["mu"]
+                    ),
+                    min=0,
+                    max=n_max,
+                ).item()
 
             self.data_idx["u"] = np.random.choice(self.data_idx["u"], int(n))
             self.data["u"] = D.Subset(datasets["u"](totens), self.data_idx["u"])

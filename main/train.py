@@ -30,7 +30,7 @@ for s in range(10):
 
     # Initialise wandb logger and save hyperparameters
     wandb_logger = pl.loggers.WandbLogger(
-        project="mirabest-ssl-t",
+        project="domain-shift",
         save_dir=path_dict["files"],
         reinit=True,
         config=config,

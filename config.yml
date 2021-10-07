@@ -1,13 +1,14 @@
-type: 'baseline'
+type: 'fixmatch'
 
 data:
     fraction: 1.0               # fraction of data-set to use at all
-    split: 1            # fraction of data-set to retain labels
-    val_frac: 0.2
+    split: 0.1            # fraction of data-set to retain labels
+    val_frac: 0.05
     u_frac: -1
     fri_R: -1                  # fraction of unlabelled data-set to contain FR1
     l: 'all'              # dataset options: confident, uncertain, all, test, rgz
-    u: 'all'              # dataset options: confident, uncertain, all, test, rgz
+    u: 'rgz'              # dataset options: confident, uncertain, all, test, rgz
+    clamp_u: 1
 
 model:
     n_z: 32                     # latent vector length
@@ -16,18 +17,18 @@ model:
     architecture: 'tang'
 
 train:
-    n_epochs: 500
+    n_epochs: 1300
     fid: False
     flip: 0
 
 seed: null
 
 # optimisable hyperparams
-cut_threshold: 29
+cut_threshold: 27
 cutout: 0
 mu: 7
 lambda: 1
 tau: 0.95
 p-strong: 1
 lr: 0.0005
-batch_size: 50
+batch_size: 20
