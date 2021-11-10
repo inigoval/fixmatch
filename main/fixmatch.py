@@ -52,6 +52,7 @@ class TransformFixMatch(object):
 class clf(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
+        self.save_hyperparameters()
         self.ce_loss = nn.CrossEntropyLoss(reduction="mean")
         self.best_acc = 0
         self.config = config
