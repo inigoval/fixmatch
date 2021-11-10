@@ -69,4 +69,7 @@ for s in range(10):
     # Run test loop #
     trainer.test(ckpt_path="best")
 
+    # Save model in wandb #
+    wandb.save(checkpoint_callback.best_model_path)
+
     wandb_logger.experiment.finish()
