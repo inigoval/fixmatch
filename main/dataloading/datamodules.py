@@ -6,9 +6,9 @@ import pytorch_lightning as pl
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, random_split
 from pytorch_lightning.trainer.supporters import CombinedLoader
+from sklearn.model_selection import train_test_split
 import torch.utils.data as D
 
-from config import load_config
 from paths import Path_Handler
 from dataloading.datasets import (
     MB_nohybrids,
@@ -20,36 +20,20 @@ from dataloading.datasets import (
 from dataloading.utils import Circle_Crop, label_fraction, flip_targets
 from dataloading.utils import (
     size_cut,
-    mb_cut,
     random_subset,
     data_splitter_strat,
     unbalance_idx,
+    uval_splitter_strat,
 )
 from fixmatch import TransformFixMatch
 from utilities import compute_mu_sig
 
 paths = Path_Handler()
 path_dict = paths._dict()
-# config = load_config()
 
 
 # Define transforms
 totens = T.ToTensor()
-
-transforms = lambda mu, sig: {
-    "weak": T.Compose(
-        [
-            T.RandomHorizontalFlip(p=0.5),
-            T.RandomRotation(180),
-            T.ToTensor(),
-            Circle_Crop(),
-            T.Normalize((mu,), (sig,)),
-        ]
-    ),
-    "u": TransformFixMatch(mu, sig),
-    "test": T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))]),
-    "val": T.Compose([T.ToTensor(), Circle_Crop(), T.Normalize((mu,), (sig,))]),
-}
 
 
 class mbDataModule(pl.LightningDataModule):
@@ -71,8 +55,6 @@ class mbDataModule(pl.LightningDataModule):
         RGZ20k(self.path, train=True, download=True)
 
     def setup(self, stage=None):
-
-        # if self.config['data']['split'] == 1:
 
         mb = {
             "confident": lambda transform: MBFRConfident(
@@ -107,13 +89,37 @@ class mbDataModule(pl.LightningDataModule):
             n_max = len(datasets["u"](totens))
             self.data_idx["u"] = np.arange(n_max)
 
+            #            # Concat uncertain and confident to avoid data leak
+            #            if self.config["data"]["l"] == "confident":
+            #                uval_splitter_strat(
+            #                    D.ConcatDataset([self.data["u"], mb["uncertain"](totens)]),
+            #                    self.data,
+            #                    self.data_idx,
+            #                    seed=self.config["seed"],
+            #                    val_frac=self.config["data"]["val_frac"],
+            #                )
+            #
+            #            if self.config["data"]["l"] == "uncertain":
+            #                self.data["u"] = D.ConcatDataset(
+            #                    [self.data["u"], mb["confident"](totens)]
+            #                )
+            #
+            #                uval_splitter_strat(
+            #                    D.ConcatDataset([self.data["u"], mb["uncertain"](totens)]),
+            #                    self.data,
+            #                    self.data_idx,
+            #                    seed=self.config["seed"],
+            #                    val_frac=self.config["data"]["val_frac"],
+            #                )
+            #
+
             # Apply angular size lower limit if using rgz
             if self.config["data"]["u"] == "rgz":
                 self.data_idx["u"] = size_cut(
                     self.config["cut_threshold"], datasets["u"](totens)
                 )
 
-            # Adjust unlabelled data set size to match mu value
+            # Adjust unlabelled data set size to match mu value (probably don't need this anymore)
             if self.config["data"]["clamp_u"]:
                 n = torch.clamp(
                     torch.tensor(
@@ -125,10 +131,11 @@ class mbDataModule(pl.LightningDataModule):
                     max=n_max,
                 ).item()
 
-            self.data_idx["u"] = np.random.choice(self.data_idx["u"], int(n))
+                self.data_idx["u"] = np.random.choice(self.data_idx["u"], int(n))
+
             self.data["u"] = D.Subset(datasets["u"](totens), self.data_idx["u"])
 
-        ## Unbalance the unlabelled dataset and change mu accordingly ##
+        ## Unbalance the unlabelled dataset ##
         if self.config["data"]["fri_R"] >= 0:
             self.data_idx["u"] = unbalance_idx(
                 self.data["u"],
@@ -136,14 +143,41 @@ class mbDataModule(pl.LightningDataModule):
             )
             self.data["u"] = D.Subset(datasets["u"](totens), self.data_idx["u"])
 
-            self.config["mu"] = len(self.data_idx["u"]) / len(self.data_idx["l"])
-            print(f"mu = {len(self.data_idx['u'])/len(self.data_idx['l'])}")
+            # self.config["mu"] = len(self.data_idx["u"]) / len(self.data_idx["l"])
+            # print(f"mu = {len(self.data_idx['u'])/len(self.data_idx['l'])}")
 
         # Load dataset, calculate mean and std & initialise transforms #
         mu, sig = compute_mu_sig(
             D.ConcatDataset([self.data["l"], self.data["u"], self.data["val"]])
         )
-        self.transforms = transforms(mu, sig)
+        self.mu, self.sig = mu, sig
+
+        self.transforms = {
+            "weak": T.Compose(
+                [
+                    T.RandomHorizontalFlip(p=0.5),
+                    T.RandomRotation(180),
+                    T.ToTensor(),
+                    Circle_Crop(),
+                    T.Normalize((mu,), (sig,)),
+                ]
+            ),
+            "u": TransformFixMatch(self.config, mu, sig),
+            "test": T.Compose(
+                [
+                    T.ToTensor(),
+                    Circle_Crop(),
+                    T.Normalize((mu,), (sig,)),
+                ]
+            ),
+            "val": T.Compose(
+                [
+                    T.ToTensor(),
+                    Circle_Crop(),
+                    T.Normalize((mu,), (sig,)),
+                ]
+            ),
+        }
 
         self.data["u"] = D.Subset(
             datasets["u"](self.transforms["u"]), self.data_idx["u"]
@@ -195,6 +229,7 @@ class mbDataModule(pl.LightningDataModule):
                 "n_labelled": len(self.data["l"]),
                 "n_unlabelled": len(self.data["u"]),
                 "n_test": len(self.data["test"]),
+                "n_val": len(self.data["val"]),
                 "f_u": label_fraction(self.data["u"], 0),
                 "f_l": label_fraction(self.data["l"], 0),
             }
