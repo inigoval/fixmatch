@@ -147,6 +147,30 @@ def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=False):
     return data_dict, idx_dict
 
 
+def uval_splitter_strat(
+    dsets, data_dict, idx_dict, seed=None, val_frac=0.2, u_cut=False
+):
+    if seed == None:
+        seed = np.random.randint(9999999)
+
+    n = len(dset)
+    idx = np.arange(n)
+    labels = np.array(dset.targets)
+
+    # Split into train/val #
+    idx_dict["u"], idx_dict["val"] = train_test_split(
+        idx,
+        test_size=val_frac,
+        stratify=labels,
+        random_state=seed,
+    )
+
+    data_dict["u"] = torch.utils.data.Subset(dset, idx_dict["u"])
+    data_dict["val"] = torch.utils.data.Subset(dset, idx_dict["val"])
+
+    return data_dict, idx_dict
+
+
 def subindex(idx, fraction):
     n = len(idx)
     n_sub = int(fraction * n)

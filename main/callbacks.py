@@ -14,6 +14,8 @@ config = load_config()
 
 
 class MetricLogger(pl.Callback):
+    """Log entropy of predictions"""
+
     def __init__(self):
         super().__init__()
 
@@ -49,6 +51,8 @@ class MetricLogger(pl.Callback):
 
 
 class FeaturePlot(pl.Callback):
+    """Scatter plot logit values"""
+
     def __init__(self):
         super().__init__()
 
@@ -87,6 +91,8 @@ class FeaturePlot(pl.Callback):
 
 
 class ImpurityLogger(pl.Callback):
+    """Log impurity and mask rate"""
+
     def __init__(self):
         super().__init__()
 
