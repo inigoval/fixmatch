@@ -18,10 +18,8 @@ config = load_config()
 
 
 class Circle_Crop(torch.nn.Module):
-    """Set all values outside largest possible circle that fits inside image to 0
-
-    Returns:
-        Image image with all values around central circle masked to 0.
+    """
+    PyTorch transform to set all values outside largest possible circle that fits inside image to 0.
     """
 
     def __init__(self):
@@ -29,6 +27,8 @@ class Circle_Crop(torch.nn.Module):
 
     def forward(self, img):
         """
+        Returns an image with all values outside the central circle bounded by image edge masked to 0.
+
         !!! Support for multiple channels not implemented yet !!!
         """
         H, W, C = img.shape[-1], img.shape[-2], img.shape[-3]
@@ -48,6 +48,9 @@ class Circle_Crop(torch.nn.Module):
 
 
 def label_fraction(dset, label):
+    """
+    Computes ratio of a given ```label``` in a ```dset```
+    """
     loader = DataLoader(dset, len(dset))
     _, y = next(iter(loader))
     targets = np.asarray(y)
@@ -56,7 +59,8 @@ def label_fraction(dset, label):
 
 
 def flip_targets(dset, fraction):
-    # Get random flconfigipping indices
+    """unused"""
+    # Get random flipping indices
     targets = dset.data.targets
     n_targets = len(targets)
     n_flip = int(fraction * n_targets)
@@ -74,6 +78,7 @@ def flip_targets(dset, fraction):
 
 
 def data_splitter(dset, fraction=1, split=1, val_frac=0.2):
+    """Deprecated - using stratified splitting to reduce variance in results"""
     n = len(dset)
     idx = np.arange(n)
     # Shuffling is inplace
@@ -150,6 +155,7 @@ def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=False):
 def uval_splitter_strat(
     dsets, data_dict, idx_dict, seed=None, val_frac=0.2, u_cut=False
 ):
+    """unused function"""
     if seed == None:
         seed = np.random.randint(9999999)
 
@@ -172,6 +178,7 @@ def uval_splitter_strat(
 
 
 def subindex(idx, fraction):
+    """Return a ```fraction``` of all given ```idx```"""
     n = len(idx)
     n_sub = int(fraction * n)
     sub_idx, rest_idx = idx[:n_sub], idx[n_sub:]
@@ -179,12 +186,14 @@ def subindex(idx, fraction):
 
 
 def random_subset(dset, size):
+    """Randomly subset a given data-set to a given size"""
     idx = np.arange(size)
     subset_idx = np.random.choice(idx, size=size)
     return D.Subset(dset, subset_idx)
 
 
 def size_cut(threshold, dset):
+    """Cut the RGZ DR1 dataset based on angular size"""
     length = len(dset)
     idx = np.argwhere(dset.sizes > threshold).flatten()
     return idx

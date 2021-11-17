@@ -79,7 +79,7 @@ class clf(pl.LightningModule):
             self.C = Tang()
 
     def forward(self, x, logit=False):
-        # self.C(img) returns (logits, y, features)
+        """Return logits or probability on forward pass"""
         if logit:
             return self.C(x)[0]
         else:
@@ -87,6 +87,7 @@ class clf(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         if self.config["type"] == "fixmatch":
+            # Retrieve batches of (un)labelled data ##
             x_l, y_l = batch["l"]
             x_u, _ = batch["u"]
             x_u_w, x_u_s = x_u
@@ -96,7 +97,7 @@ class clf(pl.LightningModule):
             l_u_w, p_u_w = self.C(x_u_w)
             l_u_s, p_u_s = self.C(x_u_s)
 
-            ## Supervised Loss l_l
+            ## Supervised Loss l_l ##
             ce_loss = F.cross_entropy(l_l, y_l)
             self.log("train/cross entropy loss", ce_loss)
 
@@ -114,6 +115,8 @@ class clf(pl.LightningModule):
             return loss
 
         elif self.config["type"] == "baseline":
+
+            ## Retrieve batch of labelled data only ##
             x_l, y_l = batch["l"]
 
             ## Pass through classifier ##
@@ -146,34 +149,39 @@ class clf(pl.LightningModule):
         ## Compute mean over epoch ##
         outs = torch.FloatTensor(outs)
         acc = torch.mean(outs)
+
+        ## Save accuracy if best in run ##
         if acc > self.best_acc:
             self.best_acc = acc
         self.log("val/best_accuracy", self.best_acc)
 
     def test_step(self, batch, batch_idx, dataloader_idx):
         if dataloader_idx == 0:
+            ## Load test batch ##
             x, y = batch
             logits, y_pred = self.C(x)
 
+            ## Calculate and log test loss ##
             loss = F.cross_entropy(logits, y)
             self.log(f"test/loss", loss, add_dataloader_idx=False)
 
-            ## Accuracy ##
+            ## Calculate and log test accuracy ##
             acc = tmF.accuracy(y_pred, y)
             self.log(f"test/accuracy", acc, add_dataloader_idx=False)
 
+            ## Calculate and log F1, precision, recall for both classes ##
             f1 = tmF.f1(y_pred, y, num_classes=2, average="none")
             precision = tmF.precision(y_pred, y, num_classes=2, average="none")
             recall = tmF.recall(y_pred, y, num_classes=2, average="none")
             names = ["fri", "frii"]
 
-            ## F1, precision, recall ##
             for p, r, f, name in zip(precision, recall, f1, names):
                 self.log(f"test/{name}_precision", p, add_dataloader_idx=False)
                 self.log(f"test/{name}_recall", r, add_dataloader_idx=False)
                 self.log(f"test/{name}_f1", f, add_dataloader_idx=False)
 
         if dataloader_idx == 1:
+            ## Load unlabelled batch ##
             x, y = batch
             x = x[0]
             logits, y_pred = self.C(x)

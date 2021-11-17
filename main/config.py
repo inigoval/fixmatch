@@ -22,7 +22,7 @@ def update_config(config):
 
     if config["type"] == "baseline":
         config["data"]["fri_R"] = -1
-        # config["data"]["u"] = "all"
+        config["data"]["u"] = "all"
         config["mu"] = 1
         config["data"]["u_frac"] = 1
         config["train"]["p-strong"] = 0
@@ -35,9 +35,7 @@ def update_config(config):
 
 
 def load_config():
-    """
-    Helper function to load config file
-    """
+    """Helper function to load yaml config file, convert to python dictionary and return."""
     path = path_dict["root"] / "config.yml"
     with open(path, "r") as ymlconfig:
         config = yaml.load(ymlconfig, Loader=yaml.FullLoader)
