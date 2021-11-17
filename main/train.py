@@ -14,8 +14,9 @@ config = load_config()
 paths = Path_Handler()
 path_dict = paths._dict()
 
-for s in range(10):
+for s in range(config["seed_i"], config["seed_f"]):
 
+    config["seed"] = s
     pl.seed_everything(s)
 
     # Save model with best accuracy for test evaluation #
@@ -26,11 +27,14 @@ for s in range(10):
         save_on_train_epoch_end=False,
         auto_insert_metric_name=True,
         verbose=True,
+        dirpath=f"wandb/{config['project_name']}_{config['type']}_{config['data']['u']}_split{config['data']['split']}",
+        filename=f"seed{config['seed']}",
+        save_weights_only=True,
     )
 
     # Initialise wandb logger and save hyperparameters
     wandb_logger = pl.loggers.WandbLogger(
-        project="domain-shift",
+        project=config["project_name"],
         save_dir=path_dict["files"],
         reinit=True,
         config=config,
@@ -41,10 +45,13 @@ for s in range(10):
     data.prepare_data()
     data.setup()
     wandb_logger.log_hyperparams(data.hyperparams)
+    config["data"]["mu"] = data.mu.item()
+    config["data"]["sig"] = data.sig.item()
 
     callbacks = {
         "baseline": [MetricLogger(), checkpoint_callback],
-        "fixmatch": [MetricLogger(), ImpurityLogger(), checkpoint_callback],
+        # "fixmatch": [MetricLogger(), ImpurityLogger(), checkpoint_callback],
+        "fixmatch": [MetricLogger(), checkpoint_callback],
     }
 
     trainer = pl.Trainer(
