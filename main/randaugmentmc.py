@@ -132,6 +132,15 @@ def TranslateY(img, v, max_v, bias=0):
     return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, 0, 1, v))
 
 
+# def GaussianNoise(img, v, max_v, bias=0):
+#    v = _float_parameter(v, max_v) + bias
+#    mean = torch.full_like(img, 0)
+#    std = torch.full_like(img, v)
+#    img += torch.normal(mean, std)
+#    return img
+#
+
+
 def _float_parameter(v, max_v):
     return float(v) * max_v / PARAMETER_MAX
 

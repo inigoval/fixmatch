@@ -8,20 +8,32 @@ import wandb
 import torchmetrics.functional as tmF
 import numpy as np
 
-from torch.utils.data import DataLoader
 from statistics import mean
 
 from networks.models import disc, Tang
-from utilities import logit_loss, entropy, dset2tens, flip
 from evaluation import accuracy, pred_label_fraction, calculate_fid
-from config import load_config
 from randaugmentmc import RandAugmentMC
 from dataloading.utils import Circle_Crop
 from paths import Path_Handler
 
 
+class GaussianNoise:
+    """Not used currently"""
+
+    def __init__(self, std):
+        self.std = std
+
+    def __call__(self, img):
+        mean = torch.full_like(img, 0)
+        std = torch.full_like(img, self.std)
+        return img + torch.normal(mean, std)
+
+
 class TransformFixMatch(object):
-    def __init__(self, mu, sig):
+    """Transform which returns a weak and strong augmented sample together"""
+
+    def __init__(self, config, mu, sig):
+        self.config = config
         self.weak = T.Compose(
             [
                 T.RandomHorizontalFlip(p=0.5),
@@ -36,12 +48,14 @@ class TransformFixMatch(object):
                 T.RandomHorizontalFlip(p=0.5),
                 T.RandomRotation(180),
                 # T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode="reflect"),
-                RandAugmentMC(n=2, m=10),
+                RandAugmentMC(n=self.config["n_aug"], m=self.config["m_aug"]),
                 T.ToTensor(),
+                Circle_Crop(),
             ]
         )
 
         self.normalize = T.Normalize((mu,), (sig,))
+        # self.noise = GaussianNoise(self.config["std"])
 
     def __call__(self, x):
         weak = self.weak(x)
@@ -65,7 +79,7 @@ class clf(pl.LightningModule):
             self.C = Tang()
 
     def forward(self, x, logit=False):
-        # D(img) returns (logits, y, features)
+        # self.C(img) returns (logits, y, features)
         if logit:
             return self.C(x)[0]
         else:
