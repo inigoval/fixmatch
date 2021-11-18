@@ -19,7 +19,7 @@ for s in range(config["seed_i"], config["seed_f"]):
     config["seed"] = s
     pl.seed_everything(s)
 
-    # Save model with best accuracy for test evaluation #
+    # Save model with best accuracy for test evaluation, model will be saved in wandb and also #
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         monitor="val/accuracy",
         mode="max",
@@ -32,7 +32,7 @@ for s in range(config["seed_i"], config["seed_f"]):
         save_weights_only=True,
     )
 
-    # Initialise wandb logger and save hyperparameters
+    # Initialise wandb logger, change this if you want to use a different logger #
     wandb_logger = pl.loggers.WandbLogger(
         project=config["project_name"],
         save_dir=path_dict["files"],
@@ -45,9 +45,12 @@ for s in range(config["seed_i"], config["seed_f"]):
     data.prepare_data()
     data.setup()
     wandb_logger.log_hyperparams(data.hyperparams)
+
+    # Record mean and standard deviation used in normalisation for inference #
     config["data"]["mu"] = data.mu.item()
     config["data"]["sig"] = data.sig.item()
 
+    # you can add ImpurityLogger if NOT using rgz unlabelled data to track impurities and mask rate
     callbacks = {
         "baseline": [MetricLogger(), checkpoint_callback],
         # "fixmatch": [MetricLogger(), ImpurityLogger(), checkpoint_callback],
@@ -64,7 +67,7 @@ for s in range(config["seed_i"], config["seed_f"]):
         log_every_n_steps=10,
     )
 
-    # initialise model
+    # Initialise model #
     model = clf(config)
 
     # Train model #
