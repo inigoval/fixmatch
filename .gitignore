@@ -1,3 +1,4 @@
 data
 sweep-cfg.txt
 notebooks
+__pycache__
