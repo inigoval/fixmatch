@@ -8,41 +8,7 @@ from utilities import load_config
 from networks.layers import conv_block, convT_block, linear_block, UPSoftmax
 
 config = load_config()
-n_z = config["model"]["n_z"]
-n_gf = config["model"]["n_gf"]
 n_df = config["model"]["n_df"]
-
-
-class gen(nn.Module):
-    # conv1 (100, 1, 1)   ->  (256, 5,  5)
-    # conv2 (256, 5, 5)   ->  (128, 10, 10)
-    # conv3 (128, 10, 10  ->  (64, 20, 20)
-    # conv4 (32, 20, 20)  ->  (16, 38, 38)
-    # conv5 (32, 38, 38)  ->  (16, 76, 76)
-    # conv6 (16, 76, 76)  ->  (1, 150, 150)
-
-    def __init__(self):
-        super().__init__()
-        self.up1 = convT_block(n_z, n_gf * 16, 5, 1, 0, activation="relu")
-
-        self.up2 = convT_block(n_gf * 16, n_gf * 8, 4, 2, 1, activation="relu")
-
-        self.up3 = convT_block(n_gf * 8, n_gf * 4, 4, 2, 1, activation="relu")
-
-        self.up4 = convT_block(n_gf * 4, n_gf * 2, 4, 2, 2, activation="relu")
-
-        self.up5 = convT_block(n_gf * 2, n_gf, 4, 2, 1, activation="relu")
-
-        self.up6 = convT_block(n_gf, 1, 4, 2, 2, activation="sig", batchnorm=False)
-
-    def forward(self, z):
-        x = self.up1(z)
-        x = self.up2(x)
-        x = self.up3(x)
-        x = self.up4(x)
-        x = self.up5(x)
-        x = self.up6(x).view(-1, 1, 150, 150)
-        return x
 
 
 class disc(nn.Module):
@@ -53,7 +19,6 @@ class disc(nn.Module):
     # conv3 (32, 38, 40)    ->  (64, 20, 20)
     # conv4 (64, 20, 20)    ->  (128, 10, 10)
     # conv5 (128, 10, 10)   ->  (256, 5, 5)
-    # conv6 (256, 5, 5)     ->  (n_z, 1, 1)
 
     def __init__(self):
         super().__init__()
