@@ -1,84 +1,45 @@
-# type of algorithm to use [baseline/fixmatch]
-type: 'baseline'
-
-# project name for logger
-project_name: 'mirabest-ssl'
-
-# initial and final seeds to use 
+type: 'fixmatch'
+project_name: 'dshift_save'
 seed_i: 0
-seed_f: 10
+seed_f: 30
 
 data:
-    # fraction of total data-set to use (probably leave this at 1)
+    n_labels: 2
     fraction: 1.0  
-
-    # fraction of data-set which retains labels 
-    split: 0.4
-
-    # fraction of total labelled data sub-set to use for validation
-    val_frac: 0.08
-
-    # how much labelled data to use (as a multiple of labelled data volume). -1 means use all availabled unlabelled data (probably just leave at -1). 
+    split: 0.1
+    val_frac: 0.1
     u_frac: -1
-
-    # remove FRI/FRII samples from unlabelled data until there is fri_R fraction of FRI samples in the unlabelled data. -1 means do not change.
     fri_R: -1
-
-    # (un)labelled data-set choice [confident, uncertain, all, test, rgz (u only)]
-    l: 'all'              
-    u: 'all'                   
-
-    # clamp number of unlabelled samples to match mu (0 does nothing, probably leave this)
+    l: 'confident'              
+    u: 'rgz'                   
     clamp_u: 0
 
 model:
-    # feature map size in CNN
     n_df: 16                  
-
-    # architecture choice: tang, basic 
     architecture: 'tang'
 
 train:
-    # number of training epochs 
-    n_epochs: 800 
-    
-    # number of labels to flip (unused)
+    n_epochs: 800
     flip: 0
+    label_weighting: False
 
 seed: null
 
 ###############################
 ### optimisable hyperparams ###
 ###############################
-
-# number of augmentations to apply during strong augmentation
 n_aug: 2
-
-# magnitude of strong augmentations [0,10]
 m_aug: 10 
-
-# angular size (arcsec) cut threshold for unlabelled data (only valid if using rgz dataset)
-cut_threshold: 29 
-
-# cutout size in strong augmentation (0 uses no cutout, best to leave for good results)
+cut_threshold: 23
 cutout: 0
-
-# multiplier for unlabelled data-batch size
+crop: False
+center_crop: 90
+random_crop_min: 0.25 
+random_crop_max: 0.8
 mu: 7
-
-# weighting for fixmatch loss term
 lambda: 1
-
-# confidence threshold for propagating label
 tau: 0.95
-
-# probability of applying each sequential strong augmentation
 p-strong: 1
-
-# learning rate
 lr: 0.0005
-
-# labelled data batch size
-batch_size: 26
-
+batch_size: 20
 # std: 0 

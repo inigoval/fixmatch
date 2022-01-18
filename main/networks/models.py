@@ -4,11 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
-from utilities import load_config
 from networks.layers import conv_block, convT_block, linear_block, UPSoftmax
-
-config = load_config()
-n_df = config["model"]["n_df"]
 
 
 class disc(nn.Module):

@@ -8,6 +8,7 @@ from callbacks import MetricLogger, FeaturePlot, ImpurityLogger
 from dataloading.datamodules import mbDataModule
 from fixmatch import clf
 from config import load_config, update_config
+from utilities import log_examples
 
 config = load_config()
 
@@ -27,7 +28,8 @@ for s in range(config["seed_i"], config["seed_f"]):
         save_on_train_epoch_end=False,
         auto_insert_metric_name=True,
         verbose=True,
-        dirpath=f"wandb/{config['project_name']}_{config['type']}_{config['data']['u']}_split{config['data']['split']}",
+        dirpath=f"wandb/{config['project_name']}_{config['type']}_{config['data']['u']}_cut{config['cut_threshold']}",
+        # dirpath=f"wandb/{config['project_name']}_{config['type']}_{config['data']['u']}_split{config['data']['split']}",
         filename=f"seed{config['seed']}",
         save_weights_only=True,
     )
@@ -45,6 +47,7 @@ for s in range(config["seed_i"], config["seed_f"]):
     data.prepare_data()
     data.setup()
     wandb_logger.log_hyperparams(data.hyperparams)
+    log_examples(wandb_logger, data.data["u"])
 
     # Record mean and standard deviation used in normalisation for inference #
     config["data"]["mu"] = data.mu.item()
@@ -77,7 +80,7 @@ for s in range(config["seed_i"], config["seed_f"]):
     print("labelled data indices: ", data.data_idx["l"])
 
     # Run test loop #
-    trainer.test(ckpt_path="best")
+    trainer.test(model, dataloaders=data, ckpt_path="best")
 
     # Save model in wandb #
     wandb.save(checkpoint_callback.best_model_path)

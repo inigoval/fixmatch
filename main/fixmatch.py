@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
 import pytorch_lightning as pl
-import wandb
 import torchmetrics.functional as tmF
 import numpy as np
 
@@ -43,14 +42,19 @@ class TransformFixMatch(object):
             ]
         )
 
+        crop_scale = (self.config["random_crop_min"], self.config["random_crop_max"])
         self.strong = T.Compose(
             [
                 T.RandomHorizontalFlip(p=0.5),
                 T.RandomRotation(180),
+                # T.CenterCrop(self.config["center_crop"]),
+                # T.RandomResizedCrop(150, scale=crop_scale),
                 # T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode="reflect"),
-                RandAugmentMC(n=self.config["n_aug"], m=self.config["m_aug"]),
                 T.ToTensor(),
                 Circle_Crop(),
+                T.ToPILImage(),
+                RandAugmentMC(n=self.config["n_aug"], m=self.config["m_aug"]),
+                T.ToTensor(),
             ]
         )
 
@@ -97,19 +101,45 @@ class clf(pl.LightningModule):
             l_u_w, p_u_w = self.C(x_u_w)
             l_u_s, p_u_s = self.C(x_u_s)
 
+            #########################
             ## Supervised Loss l_l ##
+            #########################
+
             ce_loss = F.cross_entropy(l_l, y_l)
             self.log("train/cross entropy loss", ce_loss)
 
-            ## pseudo label loss Loss ##
+            #######################
+            ## Pseudo label loss ##
+            #######################
+
+            # get pseudo labels
             p_pseudo_label, pseudo_label = torch.max(p_u_w.detach(), dim=-1)
+
+            # create a thresholding mask
             threshold_mask = p_pseudo_label.ge(self.config["tau"]).float()
-            pseudo_loss = (
-                F.cross_entropy(l_u_s, pseudo_label, reduction="none") * threshold_mask
-            ).mean()
+
+            # calculate loss and mask out values below loss
+            pseudo_loss = F.cross_entropy(l_u_s, pseudo_label, reduction="none")
+
+            # calculate label balance in labelled data
+            #            if self.config["train"]["label_weighting"]:
+            #                r_labels_l = []
+            #                r_labels_u = []
+            #                for l in range(self.config["data"]["n_labels"]):
+            #                    # calculate labelled data label ratios
+            #                    r_labels_l.append(torch.count_nonzero(y_l == l) / len(y_l))
+            #
+            #                    # calculate propagated label ratios
+            #                    prop_label = pseudo_label[threshold_mask]
+            #                    r_labels_u.append(torch.count_nonzero(prop_label == l) / len(y_l))
+
+            pseudo_loss = (pseudo_loss * threshold_mask).mean()
             self.log("train/pseudo-label loss", pseudo_loss)
 
+            ################
             ## Total Loss ##
+            ################
+
             loss = ce_loss + self.config["lambda"] * pseudo_loss
             self.log("train/loss", loss)
             return loss

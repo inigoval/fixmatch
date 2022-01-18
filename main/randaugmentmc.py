@@ -7,6 +7,7 @@ import PIL.ImageOps
 import PIL.ImageEnhance
 import PIL.ImageDraw
 from PIL import Image
+import torchvision.transforms as T
 
 from config import load_config
 
@@ -177,13 +178,13 @@ def my_augment_pool(color=False):
         (Contrast, 0.9, 0.05),
         (Equalize, None, None),
         (Identity, None, None),
-        (Invert, 0, 0),
+        # (Invert, 0, 0),  # try removing
         (Posterize, 4, 4),
         (Sharpness, 0.9, 0.05),
         (ShearX, 0.3, 0),
         (ShearY, 0.3, 0),
-        (Solarize, 256, 0),
-        (SolarizeAdd, 110, 0),
+        # (Solarize, 256, 0),  # try removing
+        # (SolarizeAdd, 110, 0),  # try removing
         (TranslateX, 0.3, 0),
         (TranslateY, 0.3, 0),
     ]
@@ -209,6 +210,7 @@ class RandAugmentMC(object):
         self.augment_pool = my_augment_pool()
 
     def __call__(self, img):
+
         ops = random.choices(self.augment_pool, k=self.n)
         for op, max_v, bias in ops:
             v = np.random.randint(1, self.m)

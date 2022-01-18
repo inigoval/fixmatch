@@ -16,7 +16,6 @@ from utilities import batch_eval
 
 config = load_config()
 
-
 class Circle_Crop(torch.nn.Module):
     """
     PyTorch transform to set all values outside largest possible circle that fits inside image to 0.
@@ -45,7 +44,6 @@ class Circle_Crop(torch.nn.Module):
         assert r.shape == img.shape
         img = torch.mul(r, img)
         return img
-
 
 def label_fraction(dset, label):
     """
