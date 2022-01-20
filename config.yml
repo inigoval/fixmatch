@@ -2,7 +2,6 @@ type: 'fixmatch'
 project_name: 'dshift_save'
 seed_i: 0
 seed_f: 30
-
 data:
     n_labels: 2
     fraction: 1.0  
@@ -16,7 +15,6 @@ data:
 
 model:
     n_df: 16                  
-    architecture: 'tang'
 
 train:
     n_epochs: 800

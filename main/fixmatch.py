@@ -76,11 +76,7 @@ class clf(pl.LightningModule):
         self.config = config
         paths = Path_Handler()
         self.paths = paths.dict
-
-        if config["model"]["architecture"] == "basic":
-            self.C = disc()
-        elif config["model"]["architecture"] == "tang":
-            self.C = Tang()
+        self.C = Tang()
 
     def forward(self, x, logit=False):
         """Return logits or probability on forward pass"""
