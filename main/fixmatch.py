@@ -9,7 +9,7 @@ import numpy as np
 
 from statistics import mean
 
-from networks.models import disc, Tang
+from networks.models import Tang
 from evaluation import accuracy, pred_label_fraction, calculate_fid
 from randaugmentmc import RandAugmentMC
 from dataloading.utils import Circle_Crop
