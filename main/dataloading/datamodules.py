@@ -16,6 +16,8 @@ from dataloading.datasets import (
     MBFRUncertain,
     MBFRConfident,
 )
+from galaxy_mnist import GalaxyMNIST
+
 from dataloading.utils import Circle_Crop, label_fraction, flip_targets
 from dataloading.utils import size_cut, data_splitter_strat, unbalance_idx
 
@@ -27,7 +29,102 @@ path_dict = paths._dict()
 
 
 # Define transforms
-totens = T.ToTensor()
+to_tensor = T.ToTensor()
+
+class GalaxyMNISTDataModule(pl.LightningDataModule):
+
+    def __init__(
+        self, config, path=path_dict['data']
+    ):
+        super().__init__()
+        self.path = path
+        self.config = config
+        self.hyperparams = {}
+
+    def prepare_data(self):
+        # trigger download now
+        _ = GalaxyMNIST(
+            root=self.path,
+            download=True
+        )
+
+    def setup(self, stage=None):
+        # Split the data while preserving class balance
+        dataset = GalaxyMNIST(root=self.path, train=True)  # only 70% for now...TODO
+        self.data, self.data_idx = data_splitter_strat(
+            dataset,
+            split=self.config["data"]["split"],
+            val_frac=self.config["data"]["val_frac"],
+            seed=self.config["seed"],
+        )
+        # print(self.data)
+
+        # Calculate mean and std of data
+        mu, sig = compute_mu_sig(
+            D.ConcatDataset([self.data["labelled"], self.data["unlabelled"], self.data["val"]])
+        )
+        self.mu, self.sig = mu, sig
+    
+        # Initialise transforms with mean and std from data
+        self.transforms = default_transforms(self.config, mu, sig)        
+
+        # ## Finally subset all data using correct transform ##
+        # self.data["unlabelled"] = D.Subset(
+        #     datasets["unlabelled"](self.transforms["unlabelled"]), self.data_idx["unlabelled"]
+        # )
+        # self.data["labelled"] = D.Subset(
+        #     datasets["labelled"](self.transforms["weak"]), self.data_idx["labelled"]
+        # )
+        # self.data["val"] = D.Subset(
+        #     datasets["labelled"](self.transforms["val"]), self.data_idx["val"]
+        # )
+        # self.data["test"] = mb["test"](self.transforms["test"])
+    
+    def train_dataloader(self):
+        """Batch unlabelled and labelled data together"""
+
+        l_batch_size = self.config["batch_size"]
+
+        # Calculate larger batch size for unlabelled data
+        u_batch_size = int(self.config["mu"] * l_batch_size)
+
+        # Define loaders with different batch sizes
+        loader_labelled = DataLoader(self.data["labelled"], l_batch_size, shuffle=True)
+        loader_unlabelled = DataLoader(self.data["unlabelled"], u_batch_size, shuffle=True)
+
+        # "Zip" loaders together for simultaneous loading
+        loaders = {"unlabelled": loader_unlabelled, "labelled": loader_labelled}
+        # dict of dataloaders
+        combined_loaders = CombinedLoader(loaders, "min_size")  
+        # see also max_size_cycle. 
+        # Should each epoch be the size of the number of batches in smallest dataloader or the largest dataloader. 
+        # Min size easier to compare epochs as cutting the unlabelled data by dif amounts, making metrics tricky to compare.
+        return combined_loaders
+
+    def val_dataloader(self):
+        val_batch_size = 100
+        loader_val = DataLoader(self.data["val"], val_batch_size)
+        return loader_val
+
+    def test_dataloader(self):
+        """Batch test and unlabelled data sequentially"""
+        u_batch_size = 200
+        # test step where idx is an arg, list-type. Runs sequentially (all of one, than all of the next), while CombinedLoader does 
+        loader_test = DataLoader(self.data["test"], int(len(self.data["test"])))
+        loader_unlabelled = DataLoader(self.data["unlabelled"], u_batch_size)
+        return [loader_test, loader_unlabelled]
+
+    def save_hparams(self):
+        self.hyperparams.update(
+            {
+                "n_labelled": len(self.data["labelled"]),
+                "n_unlabelled": len(self.data["unlabelled"]),
+                "n_test": len(self.data["test"]),
+                "n_val": len(self.data["val"]),
+                "f_u": label_fraction(self.data["unlabelled"], 0),
+                "f_l": label_fraction(self.data["labelled"], 0),
+            }
+        )
 
 
 class mbDataModule(pl.LightningDataModule):
@@ -69,114 +166,89 @@ class mbDataModule(pl.LightningDataModule):
 
         # Use config to extract correct subsets for (l)abelled/(u)nlabelled data
         datasets = {
-            "l": mb[self.config["data"]["l"]],
-            "u": mb[self.config["data"]["u"]],
+            "labelled": mb[self.config["data"]["labelled"]],
+            "unlabelled": mb[self.config["data"]["unlabelled"]],
         }
 
         # Split the data while preserving class balance
         self.data, self.data_idx = data_splitter_strat(
-            datasets["l"](totens),
+            datasets["labelled"](to_tensor),
             split=self.config["data"]["split"],
             val_frac=self.config["data"]["val_frac"],
             seed=self.config["seed"],
         )
 
         # Draw unlabelled samples from different set if required
-        if self.config["data"]["l"] != self.config["data"]["u"]:
-            n_max = len(datasets["u"](totens))
-            self.data_idx["u"] = np.arange(n_max)
+        if self.config["data"]["labelled"] != self.config["data"]["unlabelled"]:
+            n_max = len(datasets["unlabelled"](to_tensor))
+            self.data_idx["unlabelled"] = np.arange(n_max)
 
             # Apply angular size lower limit if using rgz
-            if self.config["data"]["u"] == "rgz":
-                self.data_idx["u"] = size_cut(
-                    self.config["cut_threshold"], datasets["u"](totens)
+            if self.config["data"]["unlabelled"] == "rgz":
+                self.data_idx["unlabelled"] = size_cut(
+                    self.config["cut_threshold"], datasets["unlabelled"](to_tensor)
                 )
 
             # Adjust unlabelled data set size to match mu value (probably don't need this anymore)
-            if self.config["data"]["clamp_u"]:
+            if self.config["data"]["clamp_unlabelled"]:
                 n = torch.clamp(
                     torch.tensor(
-                        self.config["data"]["clamp_u"]
-                        * len(self.data["l"])
+                        self.config["data"]["clamp_unlabelled"]
+                        * len(self.data["labelled"])
                         * self.config["mu"]
                     ),
                     min=0,
                     max=n_max,
                 ).item()
-                self.data_idx["u"] = np.random.choice(self.data_idx["u"], int(n))
+                self.data_idx["unlabelled"] = np.random.choice(self.data_idx["unlabelled"], int(n))
 
             # Re-subset unlabelled data using new indices
-            self.data["u"] = D.Subset(datasets["u"](totens), self.data_idx["u"])
+            self.data["unlabelled"] = D.Subset(datasets["unlabelled"](to_tensor), self.data_idx["unlabelled"])
 
         # Unbalance the unlabelled dataset
         if self.config["data"]["fri_R"] >= 0:
-            self.data_idx["u"] = unbalance_idx(
-                self.data["u"],
+            self.data_idx["unlabelled"] = unbalance_idx(
+                self.data["unlabelled"],
                 self.config["data"]["fri_R"],
             )
 
             # Re-subset unlabelled data using new indices
-            self.data["u"] = D.Subset(datasets["u"](totens), self.data_idx["u"])
+            self.data["unlabelled"] = D.Subset(datasets["unlabelled"](to_tensor), self.data_idx["unlabelled"])
 
         # Calculate mean and std of data
         mu, sig = compute_mu_sig(
-            D.ConcatDataset([self.data["l"], self.data["u"], self.data["val"]])
+            D.ConcatDataset([self.data["labelled"], self.data["unlabelled"], self.data["val"]])
         )
         self.mu, self.sig = mu, sig
 
         # Initialise transforms with mean and std from data
-        self.transforms = {
-            "weak": T.Compose(
-                [
-                    T.RandomHorizontalFlip(p=0.5),
-                    T.RandomRotation(180),
-                    T.ToTensor(),
-                    Circle_Crop(),
-                    T.Normalize((mu,), (sig,)),
-                ]
-            ),
-            "u": TransformFixMatch(self.config, mu, sig),
-            "test": T.Compose(
-                [
-                    T.ToTensor(),
-                    Circle_Crop(),
-                    T.Normalize((mu,), (sig,)),
-                ]
-            ),
-            "val": T.Compose(
-                [
-                    T.ToTensor(),
-                    Circle_Crop(),
-                    T.Normalize((mu,), (sig,)),
-                ]
-            ),
-        }
+        self.transforms = default_transforms(self.config, mu, sig)
 
         ## Finally subset all data using correct transform ##
-        self.data["u"] = D.Subset(
-            datasets["u"](self.transforms["u"]), self.data_idx["u"]
+        self.data["unlabelled"] = D.Subset(
+            datasets["unlabelled"](self.transforms["unlabelled"]), self.data_idx["unlabelled"]
         )
 
-        self.data["l"] = D.Subset(
-            datasets["l"](self.transforms["weak"]), self.data_idx["l"]
+        self.data["labelled"] = D.Subset(
+            datasets["labelled"](self.transforms["weak"]), self.data_idx["labelled"]
         )
 
         self.data["val"] = D.Subset(
-            datasets["l"](self.transforms["val"]), self.data_idx["val"]
+            datasets["labelled"](self.transforms["val"]), self.data_idx["val"]
         )
 
         self.data["test"] = mb["test"](self.transforms["test"])
 
         # Flip a number of targets randomly
         if self.config["train"]["flip"]:
-            self.data["l"] = flip_targets(self.data["l"], self.config["train"]["flip"])
+            self.data["labelled"] = flip_targets(self.data["labelled"], self.config["train"]["flip"])
 
         # Compute & save data hyperparameters and #
         self.save_hparams()
 
         # Print indices and data-set used in case needed
-        print(self.config["data"]["l"])
-        print(self.data_idx["l"])
+        print(self.config["data"]["labelled"])
+        print(self.data_idx["labelled"])
 
     def train_dataloader(self):
         """Batch unlabelled and labelled data together"""
@@ -187,12 +259,16 @@ class mbDataModule(pl.LightningDataModule):
         u_batch_size = int(self.config["mu"] * l_batch_size)
 
         # Define loaders with different batch sizes
-        loader_l = DataLoader(self.data["l"], l_batch_size, shuffle=True)
-        loader_u = DataLoader(self.data["u"], u_batch_size, shuffle=True)
+        loader_labelled = DataLoader(self.data["labelled"], l_batch_size, shuffle=True)
+        loader_unlabelled = DataLoader(self.data["unlabelled"], u_batch_size, shuffle=True)
 
         # "Zip" loaders together for simultaneous loading
-        loaders = {"u": loader_u, "l": loader_l}
-        combined_loaders = CombinedLoader(loaders, "min_size")
+        loaders = {"unlabelled": loader_unlabelled, "labelled": loader_labelled}
+        # dict of dataloaders
+        combined_loaders = CombinedLoader(loaders, "min_size")  
+        # see also max_size_cycle. 
+        # Should each epoch be the size of the number of batches in smallest dataloader or the largest dataloader. 
+        # Min size easier to compare epochs as cutting the unlabelled data by dif amounts, making metrics tricky to compare.
         return combined_loaders
 
     def val_dataloader(self):
@@ -203,18 +279,48 @@ class mbDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         """Batch test and unlabelled data sequentially"""
         u_batch_size = 200
+        # test step where idx is an arg, list-type. Runs sequentially (all of one, than all of the next), while CombinedLoader does 
         loader_test = DataLoader(self.data["test"], int(len(self.data["test"])))
-        loader_u = DataLoader(self.data["u"], u_batch_size)
-        return [loader_test, loader_u]
+        loader_unlabelled = DataLoader(self.data["unlabelled"], u_batch_size)
+        return [loader_test, loader_unlabelled]
 
     def save_hparams(self):
         self.hyperparams.update(
             {
-                "n_labelled": len(self.data["l"]),
-                "n_unlabelled": len(self.data["u"]),
+                "n_labelled": len(self.data["labelled"]),
+                "n_unlabelled": len(self.data["unlabelled"]),
                 "n_test": len(self.data["test"]),
                 "n_val": len(self.data["val"]),
-                "f_u": label_fraction(self.data["u"], 0),
-                "f_l": label_fraction(self.data["l"], 0),
+                "f_u": label_fraction(self.data["unlabelled"], 0),
+                "f_l": label_fraction(self.data["labelled"], 0),
             }
         )
+
+
+def default_transforms(config, mu, sig):
+    return {
+        "weak": T.Compose(
+            [
+                T.RandomHorizontalFlip(p=0.5),
+                T.RandomRotation(180),
+                T.ToTensor(),
+                Circle_Crop(),
+                T.Normalize((mu,), (sig,)),
+            ]
+        ),
+        "unlabelled": TransformFixMatch(config, mu, sig),
+        "test": T.Compose(
+            [
+                T.ToTensor(),
+                Circle_Crop(),
+                T.Normalize((mu,), (sig,)),
+            ]
+        ),
+        "val": T.Compose(
+            [
+                T.ToTensor(),
+                Circle_Crop(),
+                T.Normalize((mu,), (sig,)),
+            ]
+        ),
+    }

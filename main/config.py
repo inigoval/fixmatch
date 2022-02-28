@@ -10,28 +10,31 @@ def update_config(config):
     """
     Adjust config values if using rgz data to remove obsolete values
     """
-    if config["type"] == "fixmatch":
-        if config["data"]["u"] != "rgz":
+    # TODO only use cut_threshold as an arg for save directory when using rgz dataset - modify in train script. Then can safely delete here.
+    if config["method"] == "fixmatch":
+        if config["data"]["unlabelled"] != "rgz":
             del config["cut_threshold"]
 
         if config["mu"] == -1:
             config["mu"] = config["data"]["u_frac"]
 
-        if config["data"]["u"] == "rgz":
+        if config["data"]["unlabelled"] == "rgz":
             config["data"]["fri_R"] = -1
 
-    if config["type"] == "baseline":
+    if config["method"] == "baseline":
         config["data"]["fri_R"] = -1
-        config["data"]["u"] = "all"
+        config["data"]["unlabelled"] = "all"
         config["mu"] = 1
         config["data"]["u_frac"] = 1
         config["train"]["p-strong"] = 0
         config["cutout"] = 0
         config["randpixel"] = 0
 
-        del config["cut_threshold"]
+        del config["cut_threshold"]  # used to specify save directory
         del config["lambda"]
         del config["tau"]
+
+        # TODO extend to update for GZ MNIST?
 
 
 def load_config():

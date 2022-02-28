@@ -1,17 +1,18 @@
-type: 'fixmatch'
+method: 'fixmatch'
+data_source: 'gz_mnist'
 project_name: 'ssl'
 seed_i: 0
-seed_f: 30
+seed_f: 1
 data:
     n_labels: 2
     fraction: 1.0  
-    split: 0.1
+    split: 0.05
     val_frac: 0.1
     u_frac: -1
     fri_R: -1
-    l: 'confident'              
-    u: 'rgz'                   
-    clamp_u: 0
+    labelled: 'all'              
+    unlabelled: 'all'                   
+    clamp_unlabelled: 0
 
 model:
     n_df: 16                  
