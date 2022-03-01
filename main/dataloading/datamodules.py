@@ -1,5 +1,5 @@
+import logging
 import torch
-import torchvision
 import numpy as np
 import torchvision.transforms as T
 import pytorch_lightning as pl
@@ -48,38 +48,54 @@ class GalaxyMNISTDataModule(pl.LightningDataModule):
             download=True
         )
 
+
+    def get_gz_mnist(self, train=True, transform=None, indices=None):
+        # little wrapper around GZ MNIST to load fresh and subset it with specified indices
+        dataset = GalaxyMNIST(root=self.path, train=train, transform=transform)
+        if indices is None:
+            return dataset
+        else:
+            return D.Subset(dataset, indices)
+        
+
     def setup(self, stage=None):
+
+        untransformed_dataset = self.get_gz_mnist(transform=T.ToTensor())
+        
         # Split the data while preserving class balance
-        dataset = GalaxyMNIST(root=self.path, train=True)  # only 70% for now...TODO
-        self.data, self.data_idx = data_splitter_strat(
-            dataset,
+        untransformed_data_dict, data_idx_dict = data_splitter_strat(
+            untransformed_dataset,
             split=self.config["data"]["split"],
             val_frac=self.config["data"]["val_frac"],
             seed=self.config["seed"],
         )
-        # print(self.data)
 
-        # Calculate mean and std of data
+        # untransformed_data_dict used only for estimating mean/std. Will be reloaded with transforms on for training.
+        # data_idx_dict is used to select the same split again when training.
+
+        # print(self.data)
+        # print(data_idx_dict)
+
+        # Calculate mean and std of data, with no transforms applied
         mu, sig = compute_mu_sig(
-            D.ConcatDataset([self.data["labelled"], self.data["unlabelled"], self.data["val"]])
+            D.ConcatDataset([untransformed_data_dict["labelled"], untransformed_data_dict["unlabelled"], untransformed_data_dict["val"]])
         )
-        self.mu, self.sig = mu, sig
+        # self.mu, self.sig = mu, sig
     
         # Initialise transforms with mean and std from data
-        self.transforms = default_transforms(self.config, mu, sig)        
+        transforms_dict = default_transforms(self.config, mu, sig)    
 
-        # ## Finally subset all data using correct transform ##
-        # self.data["unlabelled"] = D.Subset(
-        #     datasets["unlabelled"](self.transforms["unlabelled"]), self.data_idx["unlabelled"]
-        # )
-        # self.data["labelled"] = D.Subset(
-        #     datasets["labelled"](self.transforms["weak"]), self.data_idx["labelled"]
-        # )
-        # self.data["val"] = D.Subset(
-        #     datasets["labelled"](self.transforms["val"]), self.data_idx["val"]
-        # )
-        # self.data["test"] = mb["test"](self.transforms["test"])
-    
+        ## subset all data using correct transform ##
+        transformed_data = {}
+        transformed_data["unlabelled"] = self.get_gz_mnist(transform=transforms_dict["unlabelled"], indices=data_idx_dict["unlabelled"])
+        transformed_data["labelled"] = self.get_gz_mnist(transform=transforms_dict["weak"], indices=data_idx_dict["labelled"])  # slightly odd - weak?
+        transformed_data["val"] = self.get_gz_mnist(transform=transforms_dict["val"], indices=data_idx_dict["val"])
+        transformed_data["test"] = self.get_gz_mnist(transform=transforms_dict["test"], train=False)  # implicitly train=True for the rest
+        self.data = transformed_data
+
+        logging.info('Setup complete')
+
+
     def train_dataloader(self):
         """Batch unlabelled and labelled data together"""
 
