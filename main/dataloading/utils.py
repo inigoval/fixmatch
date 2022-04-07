@@ -93,22 +93,22 @@ def data_splitter(dset, fraction=1, split=1, val_frac=0.2):
     )
 
     # Split into unlabelled/labelled #
-    idx_dict["l"], idx_dict["u"] = subindex(idx_dict["train"], split)
+    idx_dict["labelled"], idx_dict["unlabelled"] = subindex(idx_dict["train"], split)
 
     # Subset unlabelled data
     len_u = torch.clamp(
-        torch.tensor(int(config["mu"] * len(idx_dict["l"]))),
+        torch.tensor(int(config["mu"] * len(idx_dict["labelled"]))),
         0,
-        len(idx_dict["u"]),
+        len(idx_dict["unlabelled"]),
     ).item()
-    idx_dict["u"] = np.random.choice(idx_dict["u"], size=len_u, replace=False)
+    idx_dict["unlabelled"] = np.random.choice(idx_dict["unlabelled"], size=len_u, replace=False)
 
     for key, idx in idx_dict.items():
         data_dict[key] = torch.utils.data.Subset(dset, idx)
 
     return data_dict, idx_dict
 
-
+# useful for GZ MNIST
 def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=False):
     if seed == None:
         seed = np.random.randint(9999999)
@@ -128,7 +128,7 @@ def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=False):
     )
 
     # Split into unlabelled/labelled #
-    idx_dict["l"], idx_dict["u"] = train_test_split(
+    idx_dict["labelled"], idx_dict["unlabelled"] = train_test_split(
         idx_dict["train"],
         train_size=split,
         stratify=labels[idx_dict["train"]],
@@ -138,16 +138,17 @@ def data_splitter_strat(dset, seed=None, split=1, val_frac=0.2, u_cut=False):
     # Subset unlabelled data to match mu value #
     if u_cut:
         len_u = torch.clamp(
-            torch.tensor(int(config["mu"] * len(idx_dict["l"]))),
+            torch.tensor(int(config["mu"] * len(idx_dict["labelled"]))),
             min=0,
-            max=len(idx_dict["u"]),
+            max=len(idx_dict["unlabelled"]),
         ).item()
-        idx_dict["u"] = np.random.choice(idx_dict["u"], size=len_u, replace=False)
+        idx_dict["unlabelled"] = np.random.choice(idx_dict["unlabelled"], size=len_u, replace=False)
 
     for key, idx in idx_dict.items():
+        # update data dict with each item in idx_dict
         data_dict[key] = torch.utils.data.Subset(dset, idx)
 
-    return data_dict, idx_dict
+    return data_dict, idx_dict  # pass data dict to dataloaders
 
 
 def uval_splitter_strat(
@@ -162,14 +163,14 @@ def uval_splitter_strat(
     labels = np.array(dset.targets)
 
     # Split into train/val #
-    idx_dict["u"], idx_dict["val"] = train_test_split(
+    idx_dict["unlabelled"], idx_dict["val"] = train_test_split(
         idx,
         test_size=val_frac,
         stratify=labels,
         random_state=seed,
     )
 
-    data_dict["u"] = torch.utils.data.Subset(dset, idx_dict["u"])
+    data_dict["unlabelled"] = torch.utils.data.Subset(dset, idx_dict["unlabelled"])
     data_dict["val"] = torch.utils.data.Subset(dset, idx_dict["val"])
 
     return data_dict, idx_dict

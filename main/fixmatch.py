@@ -42,7 +42,7 @@ class TransformFixMatch(object):
             ]
         )
 
-        crop_scale = (self.config["random_crop_min"], self.config["random_crop_max"])
+        # crop_scale = (self.config["random_crop_min"], self.config["random_crop_max"])
         self.strong = T.Compose(
             [
                 T.RandomHorizontalFlip(p=0.5),
@@ -64,6 +64,7 @@ class TransformFixMatch(object):
     def __call__(self, x):
         weak = self.weak(x)
         strong = self.strong(x)
+        # returns both weak and strong augmentations
         return self.normalize(weak), self.normalize(strong)
 
 
@@ -88,9 +89,11 @@ class clf(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         if self.config["type"] == "fixmatch":
             # Retrieve batches of (un)labelled data ##
+            # l = labelled, u = unlabelled
+            # CombinedLoader does NOT combine, exactly, it parallel hands them. Up to you to combine them.
             x_l, y_l = batch["l"]
             x_u, _ = batch["u"]
-            x_u_w, x_u_s = x_u
+            x_u_w, x_u_s = x_u  # transform outputs a tuple of (weak, strong) augmented images
 
             ## Pass through classifier ##
             l_l, _ = self.C(x_l)

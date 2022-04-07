@@ -7,7 +7,7 @@ data:
     fraction: 1.0                       # Fraction of data-set to use for training
     split: 0.1                          # Fraction of data-set to use for labelled data
     val_frac: 0.1                       # Fraction of data to use for validation
-    fri_R: -1                           # Artificially imbalance unlabelled data to given proportion of FRI samples (probably leave this)
+    fri_R: -1                           # Artificially imbalance unlabelled data to given proportion of FRI samples (probably leave this). -1 does nothing.
     l: 'confident'                      # Data subset to use for labelled data [confident, uncertain, all]  
     u: 'rgz'                            # Data subset to use for unlabelled data [rgz, confident, uncertain, all]  
 

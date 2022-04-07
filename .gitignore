@@ -2,3 +2,7 @@ data
 sweep-cfg.txt
 notebooks
 __pycache__
+*.code-workspace
+files/wandb
+settings.json
+.vscode
